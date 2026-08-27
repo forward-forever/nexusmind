@@ -1,0 +1,47 @@
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+
+# Maven Wrapper build metadata
+.mvn/timing.properties
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Node
+node_modules/
+dist/
+.npm/
+.pnpm-store/
+.yarn/
+
+# Environment and local-only configuration
+.env
+.env.*
+!.env.example
+**/application-local.yml
+**/application-local.yaml
+!**/application-local.yml.example
+!**/application-local.yaml.example
+*.secret
+*.secrets
+secrets/
+
+# Runtime files
+logs/
+*.pid
+*.pid.lock
+

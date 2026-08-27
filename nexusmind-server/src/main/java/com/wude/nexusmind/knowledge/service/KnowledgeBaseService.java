@@ -1,0 +1,82 @@
+package com.wude.nexusmind.knowledge.service;
+
+import com.wude.nexusmind.knowledge.domain.KnowledgeBase;
+import com.wude.nexusmind.knowledge.domain.KnowledgeBaseStatus;
+import com.wude.nexusmind.knowledge.mapper.KnowledgeBaseMapper;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.NoSuchElementException;
+
+@Service
+@ConditionalOnProperty(name = "spring.datasource.url")
+@Transactional(readOnly = true)
+public class KnowledgeBaseService {
+
+    private final KnowledgeBaseMapper knowledgeBaseMapper;
+
+    public KnowledgeBaseService(KnowledgeBaseMapper knowledgeBaseMapper) {
+        this.knowledgeBaseMapper = knowledgeBaseMapper;
+    }
+
+    @Transactional
+    public long create(KnowledgeBase knowledgeBase) {
+        requireValid(knowledgeBase, false);
+        if (knowledgeBase.getStatus() == null) {
+            knowledgeBase.setStatus(KnowledgeBaseStatus.ACTIVE);
+        }
+        knowledgeBaseMapper.insert(knowledgeBase);
+        if (knowledgeBase.getId() == null) {
+            throw new IllegalStateException("Knowledge base ID was not generated");
+        }
+        return knowledgeBase.getId();
+    }
+
+    public KnowledgeBase get(long id) {
+        return knowledgeBaseMapper.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("Knowledge base not found: " + id));
+    }
+
+    public List<KnowledgeBase> list() {
+        return List.copyOf(knowledgeBaseMapper.findAll());
+    }
+
+    @Transactional
+    public void update(KnowledgeBase knowledgeBase) {
+        requireValid(knowledgeBase, true);
+        if (knowledgeBaseMapper.update(knowledgeBase) != 1) {
+            throw new NoSuchElementException("Knowledge base not found: " + knowledgeBase.getId());
+        }
+    }
+
+    private static void requireValid(KnowledgeBase knowledgeBase, boolean idRequired) {
+        if (knowledgeBase == null) {
+            throw new IllegalArgumentException("Knowledge base is required");
+        }
+        if (idRequired && knowledgeBase.getId() == null) {
+            throw new IllegalArgumentException("Knowledge base ID is required");
+        }
+        requireText(knowledgeBase.getName(), "Knowledge base name", 128);
+        requireText(knowledgeBase.getEmbeddingModel(), "Embedding model", 128);
+        if (knowledgeBase.getEmbeddingDimension() == null || knowledgeBase.getEmbeddingDimension() <= 0) {
+            throw new IllegalArgumentException("Embedding dimension must be positive");
+        }
+        if (knowledgeBase.getDescription() != null && knowledgeBase.getDescription().length() > 1024) {
+            throw new IllegalArgumentException("Knowledge base description exceeds 1024 characters");
+        }
+        if (idRequired && knowledgeBase.getStatus() == null) {
+            throw new IllegalArgumentException("Knowledge base status is required");
+        }
+    }
+
+    private static void requireText(String value, String field, int maximumLength) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(field + " is required");
+        }
+        if (value.length() > maximumLength) {
+            throw new IllegalArgumentException(field + " exceeds " + maximumLength + " characters");
+        }
+    }
+}

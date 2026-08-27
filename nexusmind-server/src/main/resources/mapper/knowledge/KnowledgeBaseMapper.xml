@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wude.nexusmind.knowledge.mapper.KnowledgeBaseMapper">
+
+    <resultMap id="knowledgeBaseResultMap" type="com.wude.nexusmind.knowledge.domain.KnowledgeBase">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="description" column="description"/>
+        <result property="embeddingModel" column="embedding_model"/>
+        <result property="embeddingDimension" column="embedding_dimension"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="columns">
+        id, name, description, embedding_model, embedding_dimension, status, created_at, updated_at
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO knowledge_base (
+            name, description, embedding_model, embedding_dimension, status
+        ) VALUES (
+            #{name}, #{description,jdbcType=VARCHAR}, #{embeddingModel}, #{embeddingDimension}, #{status}
+        )
+    </insert>
+
+    <select id="findById" resultMap="knowledgeBaseResultMap">
+        SELECT <include refid="columns"/>
+        FROM knowledge_base
+        WHERE id = #{id}
+    </select>
+
+    <select id="findAll" resultMap="knowledgeBaseResultMap">
+        SELECT <include refid="columns"/>
+        FROM knowledge_base
+        ORDER BY id
+    </select>
+
+    <update id="update">
+        UPDATE knowledge_base
+        SET name = #{name},
+            description = #{description,jdbcType=VARCHAR},
+            embedding_model = #{embeddingModel},
+            embedding_dimension = #{embeddingDimension},
+            status = #{status}
+        WHERE id = #{id}
+    </update>
+
+</mapper>

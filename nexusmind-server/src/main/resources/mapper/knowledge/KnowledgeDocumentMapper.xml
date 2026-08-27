@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wude.nexusmind.knowledge.mapper.KnowledgeDocumentMapper">
+
+    <resultMap id="knowledgeDocumentResultMap" type="com.wude.nexusmind.knowledge.domain.KnowledgeDocument">
+        <id property="id" column="id"/>
+        <result property="knowledgeBaseId" column="knowledge_base_id"/>
+        <result property="originalFileName" column="original_file_name"/>
+        <result property="storagePath" column="storage_path"/>
+        <result property="contentType" column="content_type"/>
+        <result property="fileSize" column="file_size"/>
+        <result property="fileSha256" column="file_sha256"/>
+        <result property="status" column="status"/>
+        <result property="chunkCount" column="chunk_count"/>
+        <result property="errorMessage" column="error_message"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="columns">
+        id, knowledge_base_id, original_file_name, storage_path, content_type, file_size,
+        file_sha256, status, chunk_count, error_message, created_at, updated_at
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO knowledge_document (
+            knowledge_base_id, original_file_name, storage_path, content_type, file_size,
+            file_sha256, status, chunk_count, error_message
+        ) VALUES (
+            #{knowledgeBaseId}, #{originalFileName}, #{storagePath,jdbcType=VARCHAR}, #{contentType},
+            #{fileSize}, #{fileSha256}, #{status}, #{chunkCount}, #{errorMessage,jdbcType=VARCHAR}
+        )
+    </insert>
+
+    <select id="findById" resultMap="knowledgeDocumentResultMap">
+        SELECT <include refid="columns"/>
+        FROM knowledge_document
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByKnowledgeBaseId" resultMap="knowledgeDocumentResultMap">
+        SELECT <include refid="columns"/>
+        FROM knowledge_document
+        WHERE knowledge_base_id = #{knowledgeBaseId}
+        ORDER BY id
+    </select>
+
+    <update id="updateStatus">
+        UPDATE knowledge_document
+        SET status = #{status},
+            chunk_count = #{chunkCount},
+            error_message = #{errorMessage,jdbcType=VARCHAR}
+        WHERE id = #{id}
+    </update>
+
+</mapper>

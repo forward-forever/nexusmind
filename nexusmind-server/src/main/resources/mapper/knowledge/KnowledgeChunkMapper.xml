@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wude.nexusmind.knowledge.mapper.KnowledgeChunkMapper">
+
+    <resultMap id="knowledgeChunkResultMap" type="com.wude.nexusmind.knowledge.domain.KnowledgeChunk">
+        <id property="id" column="id"/>
+        <result property="knowledgeBaseId" column="knowledge_base_id"/>
+        <result property="documentId" column="document_id"/>
+        <result property="chunkIndex" column="chunk_index"/>
+        <result property="content" column="content"/>
+        <result property="pageNo" column="page_no"/>
+        <result property="sectionTitle" column="section_title"/>
+        <result property="charCount" column="char_count"/>
+        <result property="tokenCount" column="token_count"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="batchInsert" useGeneratedKeys="true" keyProperty="chunks.id">
+        INSERT INTO knowledge_chunk (
+            knowledge_base_id, document_id, chunk_index, content, page_no,
+            section_title, char_count, token_count
+        ) VALUES
+        <foreach collection="chunks" item="chunk" separator=",">
+            (
+                #{chunk.knowledgeBaseId}, #{chunk.documentId}, #{chunk.chunkIndex}, #{chunk.content},
+                #{chunk.pageNo,jdbcType=INTEGER}, #{chunk.sectionTitle,jdbcType=VARCHAR},
+                #{chunk.charCount}, #{chunk.tokenCount,jdbcType=INTEGER}
+            )
+        </foreach>
+    </insert>
+
+    <select id="findByDocumentId" resultMap="knowledgeChunkResultMap">
+        SELECT id, knowledge_base_id, document_id, chunk_index, content, page_no,
+               section_title, char_count, token_count, created_at
+        FROM knowledge_chunk
+        WHERE document_id = #{documentId}
+        ORDER BY chunk_index
+    </select>
+
+    <delete id="deleteByDocumentId">
+        DELETE FROM knowledge_chunk
+        WHERE document_id = #{documentId}
+    </delete>
+
+</mapper>
