@@ -15,7 +15,13 @@ public interface KnowledgeDocumentMapper {
 
     Optional<KnowledgeDocument> findById(long id);
 
+    Optional<KnowledgeDocument> findByIdForUpdate(long id);
+
     List<KnowledgeDocument> findByKnowledgeBaseId(long knowledgeBaseId);
+
+    Optional<KnowledgeDocument> findByKnowledgeBaseIdAndSha256(
+            @Param("knowledgeBaseId") long knowledgeBaseId,
+            @Param("fileSha256") String fileSha256);
 
     int updateStatus(@Param("id") long id,
                      @Param("status") DocumentStatus status,

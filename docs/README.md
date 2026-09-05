@@ -1,6 +1,7 @@
 # Docs
 
-本目录用于后续维护架构说明、数据库设计、RAG 评估、面试笔记和关键设计决策。
+本目录用于维护架构说明、数据库设计、RAG 评估、面试笔记和关键设计决策。
 
-当前阶段仅保留文档入口，具体内容均为 **Planned**。
-
+- [Document Ingestion](document-ingestion.md)：Checkpoint 3 的上传、存储、解析与切分设计
+- Embedding / Milvus Retrieval：**Planned**
+- RAG Evaluation：**Planned**

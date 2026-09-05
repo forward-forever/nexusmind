@@ -2,13 +2,13 @@ package com.wude.nexusmind.knowledge.service;
 
 import com.wude.nexusmind.knowledge.domain.KnowledgeBase;
 import com.wude.nexusmind.knowledge.domain.KnowledgeBaseStatus;
+import com.wude.nexusmind.knowledge.exception.KnowledgeBaseNotFoundException;
 import com.wude.nexusmind.knowledge.mapper.KnowledgeBaseMapper;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.NoSuchElementException;
 
 @Service
 @ConditionalOnProperty(name = "spring.datasource.url")
@@ -36,7 +36,7 @@ public class KnowledgeBaseService {
 
     public KnowledgeBase get(long id) {
         return knowledgeBaseMapper.findById(id)
-                .orElseThrow(() -> new NoSuchElementException("Knowledge base not found: " + id));
+                .orElseThrow(() -> new KnowledgeBaseNotFoundException(id));
     }
 
     public List<KnowledgeBase> list() {
@@ -45,9 +45,15 @@ public class KnowledgeBaseService {
 
     @Transactional
     public void update(KnowledgeBase knowledgeBase) {
+        if (knowledgeBase == null || knowledgeBase.getId() == null) {
+            throw new IllegalArgumentException("Knowledge base and ID are required");
+        }
+        KnowledgeBase existing = get(knowledgeBase.getId());
+        knowledgeBase.setEmbeddingModel(existing.getEmbeddingModel());
+        knowledgeBase.setEmbeddingDimension(existing.getEmbeddingDimension());
         requireValid(knowledgeBase, true);
         if (knowledgeBaseMapper.update(knowledgeBase) != 1) {
-            throw new NoSuchElementException("Knowledge base not found: " + knowledgeBase.getId());
+            throw new KnowledgeBaseNotFoundException(knowledgeBase.getId());
         }
     }
 

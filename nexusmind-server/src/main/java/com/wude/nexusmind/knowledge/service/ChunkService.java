@@ -2,6 +2,7 @@ package com.wude.nexusmind.knowledge.service;
 
 import com.wude.nexusmind.knowledge.domain.KnowledgeChunk;
 import com.wude.nexusmind.knowledge.domain.KnowledgeDocument;
+import com.wude.nexusmind.knowledge.exception.DocumentNotFoundException;
 import com.wude.nexusmind.knowledge.mapper.KnowledgeChunkMapper;
 import com.wude.nexusmind.knowledge.mapper.KnowledgeDocumentMapper;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -9,7 +10,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.NoSuchElementException;
 import java.util.Objects;
 
 @Service
@@ -54,6 +54,6 @@ public class ChunkService {
 
     private KnowledgeDocument findDocument(long documentId) {
         return documentMapper.findById(documentId)
-                .orElseThrow(() -> new NoSuchElementException("Document not found: " + documentId));
+                .orElseThrow(() -> new DocumentNotFoundException(documentId));
     }
 }

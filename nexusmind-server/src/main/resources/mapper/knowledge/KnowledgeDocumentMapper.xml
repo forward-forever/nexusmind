@@ -40,11 +40,26 @@
         WHERE id = #{id}
     </select>
 
+    <select id="findByIdForUpdate" resultMap="knowledgeDocumentResultMap">
+        SELECT <include refid="columns"/>
+        FROM knowledge_document
+        WHERE id = #{id}
+        FOR UPDATE
+    </select>
+
     <select id="findByKnowledgeBaseId" resultMap="knowledgeDocumentResultMap">
         SELECT <include refid="columns"/>
         FROM knowledge_document
         WHERE knowledge_base_id = #{knowledgeBaseId}
         ORDER BY id
+    </select>
+
+    <select id="findByKnowledgeBaseIdAndSha256" resultMap="knowledgeDocumentResultMap">
+        SELECT <include refid="columns"/>
+        FROM knowledge_document
+        WHERE knowledge_base_id = #{knowledgeBaseId}
+          AND file_sha256 = #{fileSha256}
+        LIMIT 1
     </select>
 
     <update id="updateStatus">

@@ -1,6 +1,10 @@
 spring:
   application:
     name: nexusmind-server
+  servlet:
+    multipart:
+      max-file-size: ${NEXUSMIND_MAX_FILE_SIZE:20MB}
+      max-request-size: ${NEXUSMIND_MAX_FILE_SIZE:20MB}
   ai:
     model:
       chat: none
@@ -30,6 +34,14 @@ info:
   application:
     name: ${spring.application.name}
     description: NexusMind AI Knowledge & Agent Platform
+
+nexusmind:
+  storage:
+    root: ${NEXUSMIND_STORAGE_ROOT:${user.home}/.nexusmind/storage}
+    max-file-size: ${NEXUSMIND_MAX_FILE_SIZE:20MB}
+  chunking:
+    chunk-size-chars: ${NEXUSMIND_CHUNK_SIZE_CHARS:1000}
+    chunk-overlap-chars: ${NEXUSMIND_CHUNK_OVERLAP_CHARS:150}
 
 ---
 spring:

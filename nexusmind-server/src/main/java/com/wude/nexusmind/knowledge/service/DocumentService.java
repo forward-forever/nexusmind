@@ -3,6 +3,9 @@ package com.wude.nexusmind.knowledge.service;
 import com.wude.nexusmind.knowledge.domain.DocumentStatus;
 import com.wude.nexusmind.knowledge.domain.KnowledgeChunk;
 import com.wude.nexusmind.knowledge.domain.KnowledgeDocument;
+import com.wude.nexusmind.knowledge.exception.DocumentNotFoundException;
+import com.wude.nexusmind.knowledge.exception.InvalidDocumentStateException;
+import com.wude.nexusmind.knowledge.exception.KnowledgeBaseNotFoundException;
 import com.wude.nexusmind.knowledge.mapper.KnowledgeBaseMapper;
 import com.wude.nexusmind.knowledge.mapper.KnowledgeChunkMapper;
 import com.wude.nexusmind.knowledge.mapper.KnowledgeDocumentMapper;
@@ -11,8 +14,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.NoSuchElementException;
 import java.util.Objects;
+import java.util.Optional;
 
 @Service
 @ConditionalOnProperty(name = "spring.datasource.url")
@@ -35,7 +38,7 @@ public class DocumentService {
     public long register(KnowledgeDocument document) {
         requireValidDocument(document);
         if (knowledgeBaseMapper.findById(document.getKnowledgeBaseId()).isEmpty()) {
-            throw new NoSuchElementException("Knowledge base not found: " + document.getKnowledgeBaseId());
+            throw new KnowledgeBaseNotFoundException(document.getKnowledgeBaseId());
         }
         if (document.getStatus() == null) {
             document.setStatus(DocumentStatus.UPLOADED);
@@ -58,15 +61,25 @@ public class DocumentService {
         return List.copyOf(documentMapper.findByKnowledgeBaseId(knowledgeBaseId));
     }
 
+    public Optional<KnowledgeDocument> findByKnowledgeBaseAndSha256(long knowledgeBaseId, String sha256) {
+        return documentMapper.findByKnowledgeBaseIdAndSha256(knowledgeBaseId, sha256);
+    }
+
     @Transactional
     public void markProcessing(long documentId) {
-        KnowledgeDocument document = findRequired(documentId);
+        KnowledgeDocument document = findRequiredForUpdate(documentId);
+        if (document.getStatus() != DocumentStatus.UPLOADED && document.getStatus() != DocumentStatus.FAILED) {
+            throw new InvalidDocumentStateException(documentId, document.getStatus(), "start processing");
+        }
         updateStatus(documentId, DocumentStatus.PROCESSING, document.getChunkCount(), null);
     }
 
     @Transactional
     public void markFailed(long documentId, String errorMessage) {
-        KnowledgeDocument document = findRequired(documentId);
+        KnowledgeDocument document = findRequiredForUpdate(documentId);
+        if (document.getStatus() != DocumentStatus.PROCESSING) {
+            throw new InvalidDocumentStateException(documentId, document.getStatus(), "be marked failed");
+        }
         if (errorMessage == null || errorMessage.isBlank()) {
             throw new IllegalArgumentException("Failure message is required");
         }
@@ -78,7 +91,10 @@ public class DocumentService {
 
     @Transactional
     public void replaceChunksAndMarkReady(long documentId, List<KnowledgeChunk> chunks) {
-        KnowledgeDocument document = findRequired(documentId);
+        KnowledgeDocument document = findRequiredForUpdate(documentId);
+        if (document.getStatus() != DocumentStatus.PROCESSING) {
+            throw new InvalidDocumentStateException(documentId, document.getStatus(), "replace chunks");
+        }
         if (chunks == null) {
             throw new IllegalArgumentException("Chunks are required");
         }
@@ -95,13 +111,18 @@ public class DocumentService {
 
     private KnowledgeDocument findRequired(long documentId) {
         return documentMapper.findById(documentId)
-                .orElseThrow(() -> new NoSuchElementException("Document not found: " + documentId));
+                .orElseThrow(() -> new DocumentNotFoundException(documentId));
+    }
+
+    private KnowledgeDocument findRequiredForUpdate(long documentId) {
+        return documentMapper.findByIdForUpdate(documentId)
+                .orElseThrow(() -> new DocumentNotFoundException(documentId));
     }
 
     private void updateStatus(long documentId, DocumentStatus status, Integer chunkCount, String errorMessage) {
         int safeChunkCount = chunkCount == null ? 0 : chunkCount;
         if (documentMapper.updateStatus(documentId, status, safeChunkCount, errorMessage) != 1) {
-            throw new NoSuchElementException("Document not found: " + documentId);
+            throw new DocumentNotFoundException(documentId);
         }
     }
 

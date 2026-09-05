@@ -8,14 +8,20 @@ NexusMind 是一个规划中的个人 AI 应用项目，定位为 **AI Knowledge
 
 ## 当前阶段
 
-当前仅完成可编译、可启动的后端工程骨架。所有业务能力均为 **Planned**，尚未实现。
+当前已完成本地基础设施、Knowledge Domain/MySQL 持久化基础，以及第一版文档摄取链路：
+
+```text
+Document Upload → Local Storage → Parser → Sliding Window Chunk → MySQL
+```
+
+支持 PDF、Markdown 和 UTF-8 TXT。Embedding、Milvus Retrieval、RAG、Chat 与 Agent 仍为 **Planned**。
 
 ## 高层架构设想
 
-- `nexusmind-server`：Java 后端服务
+- `nexusmind-server`：Java 后端服务（当前开发重点）
 - `nexusmind-web`：Web 管理与交互界面（Planned）
-- `deploy`：本地与部署环境编排（Planned）
-- `docs`：架构、设计决策与评估文档（Planned）
+- `deploy`：MySQL 与 Milvus 本地开发环境
+- `docs`：架构、设计决策与评估文档
 
 ## 技术栈
 
@@ -24,6 +30,9 @@ NexusMind 是一个规划中的个人 AI 应用项目，定位为 **AI Knowledge
 - Spring Boot 4.1.0
 - Spring AI 2.0.0
 - Spring MVC
+- MyBatis 4.1.0 / Flyway
+- MySQL 8.4.11 / Milvus 2.6.22（Milvus 业务接入 Planned）
+- Apache PDFBox 3.0.8
 
 ## Roadmap
 
@@ -31,4 +40,3 @@ NexusMind 是一个规划中的个人 AI 应用项目，定位为 **AI Knowledge
 - V2 - Hybrid Retrieval & Evaluation（Planned）
 - V3 - Agent & Tool Calling（Planned）
 - V4 - Production Engineering（Planned）
-

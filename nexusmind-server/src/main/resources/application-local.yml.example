@@ -20,3 +20,11 @@ mybatis:
   configuration:
     map-underscore-to-camel-case: true
     default-enum-type-handler: org.apache.ibatis.type.EnumTypeHandler
+
+nexusmind:
+  storage:
+    root: ${NEXUSMIND_STORAGE_ROOT:${user.home}/.nexusmind/storage}
+    max-file-size: ${NEXUSMIND_MAX_FILE_SIZE:20MB}
+  chunking:
+    chunk-size-chars: ${NEXUSMIND_CHUNK_SIZE_CHARS:1000}
+    chunk-overlap-chars: ${NEXUSMIND_CHUNK_OVERLAP_CHARS:150}
