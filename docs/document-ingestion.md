@@ -7,7 +7,7 @@ Upload → Temporary File + SHA-256 → Local Storage → MySQL Document
        → Parser → ParsedDocument → SlidingWindowChunker → MySQL Chunks
 ```
 
-当前支持 PDF、Markdown（`.md` / `.markdown`）和 UTF-8 TXT。Embedding、Milvus Retrieval 与 RAG 仍为 **Planned**。
+当前支持 PDF、Markdown（`.md` / `.markdown`）和 UTF-8 TXT。Dense Retrieval 已在 Checkpoint 4 实现；BM25、Hybrid Retrieval 与 RAG 仍为 **Planned**。
 
 ## 配置
 
@@ -48,7 +48,7 @@ set +a
 ```bash
 curl -sS -X POST http://localhost:8080/api/knowledge-bases \
   -H 'Content-Type: application/json' \
-  -d '{"name":"Local Notes","description":"Checkpoint 3 smoke test","embeddingModel":"text-embedding-3-small","embeddingDimension":1536}'
+  -d '{"name":"Local Notes","description":"Document ingestion smoke test"}'
 ```
 
 上传文件（将 `1` 替换为 KnowledgeBase ID）：
@@ -75,4 +75,4 @@ curl -sS http://localhost:8080/api/documents/1/chunks
 - Parser 输出带页码或章节标题的 `ParsedDocument`，Chunker 不跨 PDF 页或 Markdown Section 合并内容。
 - PDF 未提取到有效文本时明确失败；V1 不提供 OCR。
 - Parser 与 Chunk 计算不占用数据库事务；只有状态变化及 Chunk 替换使用短事务。
-- MySQL 是业务数据 Source of Truth。Milvus 后续仅作为可重建的 Retrieval Index。
+- MySQL 是业务数据 Source of Truth。Milvus 仅作为可重建的 Retrieval Index。

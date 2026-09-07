@@ -36,12 +36,28 @@ info:
     description: NexusMind AI Knowledge & Agent Platform
 
 nexusmind:
+  vector:
+    enabled: false
+  ai:
+    embedding:
+      model: qwen3.7-text-embedding-flash
+      dimension: 1024
+      batch-size: 15
+  milvus:
+    enabled: false
+    uri: ${MILVUS_URI:http://localhost:19530}
+    content-max-length: 8192
+    ready-timeout: 30s
+    hnsw:
+      m: 32
+      ef-construction: 200
+      ef: 64
   storage:
     root: ${NEXUSMIND_STORAGE_ROOT:${user.home}/.nexusmind/storage}
     max-file-size: ${NEXUSMIND_MAX_FILE_SIZE:20MB}
   chunking:
-    chunk-size-chars: ${NEXUSMIND_CHUNK_SIZE_CHARS:1000}
-    chunk-overlap-chars: ${NEXUSMIND_CHUNK_OVERLAP_CHARS:150}
+    chunk-size-chars: ${NEXUSMIND_CHUNK_SIZE_CHARS:500}
+    chunk-overlap-chars: ${NEXUSMIND_CHUNK_OVERLAP_CHARS:100}
 
 ---
 spring:

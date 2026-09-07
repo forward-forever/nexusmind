@@ -1,7 +1,6 @@
 package com.wude.nexusmind.knowledge.api;
 
 import com.wude.nexusmind.knowledge.domain.KnowledgeBase;
-import com.wude.nexusmind.knowledge.domain.KnowledgeBaseStatus;
 import com.wude.nexusmind.knowledge.service.KnowledgeBaseService;
 import jakarta.validation.Valid;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -30,14 +29,7 @@ public class KnowledgeBaseController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public KnowledgeBase create(@Valid @RequestBody CreateKnowledgeBaseRequest request) {
-        KnowledgeBase knowledgeBase = new KnowledgeBase(
-                request.name(),
-                request.description(),
-                request.embeddingModel(),
-                request.embeddingDimension(),
-                KnowledgeBaseStatus.ACTIVE
-        );
-        long id = knowledgeBaseService.create(knowledgeBase);
+        long id = knowledgeBaseService.create(request.name(), request.description());
         return knowledgeBaseService.get(id);
     }
 

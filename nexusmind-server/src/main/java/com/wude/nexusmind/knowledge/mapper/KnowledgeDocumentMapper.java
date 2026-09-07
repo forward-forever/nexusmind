@@ -1,6 +1,7 @@
 package com.wude.nexusmind.knowledge.mapper;
 
 import com.wude.nexusmind.knowledge.domain.DocumentStatus;
+import com.wude.nexusmind.knowledge.domain.DocumentIndexStatus;
 import com.wude.nexusmind.knowledge.domain.KnowledgeDocument;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -27,4 +28,8 @@ public interface KnowledgeDocumentMapper {
                      @Param("status") DocumentStatus status,
                      @Param("chunkCount") int chunkCount,
                      @Param("errorMessage") String errorMessage);
+
+    int updateIndexStatus(@Param("id") long id,
+                          @Param("indexStatus") DocumentIndexStatus indexStatus,
+                          @Param("indexErrorMessage") String indexErrorMessage);
 }

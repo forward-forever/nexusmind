@@ -39,5 +39,4 @@ docker compose down -v
 - Milvus gRPC: `19530`
 - Milvus Health/Web: `9091`
 
-本阶段只创建空的 `nexusmind` 数据库，不包含业务表、初始化 SQL、Milvus Collection 或索引。
-
+MySQL 业务 Schema 由应用 Flyway migration 管理。Milvus Collection 与索引由应用在首次索引 Document 时惰性创建，不通过 Docker Compose 预创建。

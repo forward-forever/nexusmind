@@ -2,6 +2,18 @@ spring:
   config:
     activate:
       on-profile: local
+  ai:
+    model:
+      embedding: openai
+    openai:
+      embedding:
+        base-url: ${EMBEDDING_BASE_URL}
+        api-key: ${DASHSCOPE_API_KEY}
+        model: ${nexusmind.ai.embedding.model}
+        dimensions: ${nexusmind.ai.embedding.dimension}
+        encoding-format: float
+        timeout: ${EMBEDDING_TIMEOUT:60s}
+        max-retries: ${EMBEDDING_MAX_RETRIES:1}
   datasource:
     url: jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/${DB_NAME:nexusmind}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia%2FShanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: ${DB_USERNAME:nexusmind}
@@ -22,6 +34,22 @@ mybatis:
     default-enum-type-handler: org.apache.ibatis.type.EnumTypeHandler
 
 nexusmind:
+  vector:
+    enabled: true
+  ai:
+    embedding:
+      model: qwen3.7-text-embedding-flash
+      dimension: 1024
+      batch-size: 20
+  milvus:
+    enabled: true
+    uri: ${MILVUS_URI:http://localhost:19530}
+    content-max-length: 8192
+    ready-timeout: 30s
+    hnsw:
+      m: 32
+      ef-construction: 200
+      ef: 64
   storage:
     root: ${NEXUSMIND_STORAGE_ROOT:${user.home}/.nexusmind/storage}
     max-file-size: ${NEXUSMIND_MAX_FILE_SIZE:20MB}

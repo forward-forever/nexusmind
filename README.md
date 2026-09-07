@@ -8,13 +8,14 @@ NexusMind 是一个规划中的个人 AI 应用项目，定位为 **AI Knowledge
 
 ## 当前阶段
 
-当前已完成本地基础设施、Knowledge Domain/MySQL 持久化基础，以及第一版文档摄取链路：
+当前已完成本地基础设施、Knowledge Domain/MySQL 持久化、文档摄取，以及第一版 Dense Vector Retrieval：
 
 ```text
 Document Upload → Local Storage → Parser → Sliding Window Chunk → MySQL
+MySQL Chunk → Embedding → Milvus HNSW → COSINE TopK
 ```
 
-支持 PDF、Markdown 和 UTF-8 TXT。Embedding、Milvus Retrieval、RAG、Chat 与 Agent 仍为 **Planned**。
+支持 PDF、Markdown 和 UTF-8 TXT。当前已实现 Embedding 和 Milvus Dense Retrieval；BM25、Hybrid Retrieval、RAG Answer、Chat 与 Agent 仍为 **Planned**。
 
 ## 高层架构设想
 
@@ -31,7 +32,8 @@ Document Upload → Local Storage → Parser → Sliding Window Chunk → MySQL
 - Spring AI 2.0.0
 - Spring MVC
 - MyBatis 4.1.0 / Flyway
-- MySQL 8.4.11 / Milvus 2.6.22（Milvus 业务接入 Planned）
+- MySQL 8.4.11 / Milvus 2.6.22
+- Alibaba Cloud Model Studio OpenAI-compatible Embedding
 - Apache PDFBox 3.0.8
 
 ## Roadmap

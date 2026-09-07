@@ -1,6 +1,7 @@
 package com.wude.nexusmind.knowledge;
 
 import com.wude.nexusmind.knowledge.domain.DocumentStatus;
+import com.wude.nexusmind.knowledge.domain.DocumentIndexStatus;
 import com.wude.nexusmind.knowledge.domain.KnowledgeBase;
 import com.wude.nexusmind.knowledge.domain.KnowledgeBaseStatus;
 import com.wude.nexusmind.knowledge.domain.KnowledgeChunk;
@@ -9,6 +10,8 @@ import com.wude.nexusmind.knowledge.mapper.KnowledgeBaseMapper;
 import com.wude.nexusmind.knowledge.mapper.KnowledgeChunkMapper;
 import com.wude.nexusmind.knowledge.mapper.KnowledgeDocumentMapper;
 import com.wude.nexusmind.knowledge.service.DocumentService;
+import com.wude.nexusmind.knowledge.service.DocumentIndexStateService;
+import com.wude.nexusmind.knowledge.exception.InvalidDocumentIndexStateException;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,7 +27,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
-        properties = "mybatis.configuration.log-impl=org.apache.ibatis.logging.stdout.StdOutImpl"
+        properties = {
+                "mybatis.configuration.log-impl=org.apache.ibatis.logging.stdout.StdOutImpl",
+                "spring.ai.model.embedding=none",
+                "nexusmind.vector.enabled=false",
+                "nexusmind.milvus.enabled=false"
+        }
 )
 @ActiveProfiles("local")
 class KnowledgePersistenceLocalIT {
@@ -47,10 +55,13 @@ class KnowledgePersistenceLocalIT {
     @Autowired
     private DocumentService documentService;
 
+    @Autowired
+    private DocumentIndexStateService documentIndexStateService;
+
     @Test
     void mapperCrudBatchInsertAndTransactionRollbackWork() {
         assertThat(flyway.info().current()).isNotNull();
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("1");
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("2");
 
         Long knowledgeBaseId = null;
         Long documentId = null;
@@ -88,6 +99,8 @@ class KnowledgePersistenceLocalIT {
             documentId = document.getId();
             assertThat(documentId).isNotNull();
             assertThat(documentMapper.findById(documentId)).isPresent();
+            assertThat(documentMapper.findById(documentId).orElseThrow().getIndexStatus())
+                    .isEqualTo(DocumentIndexStatus.NOT_INDEXED);
             assertThat(documentMapper.findByKnowledgeBaseId(knowledgeBaseId))
                     .extracting(KnowledgeDocument::getId)
                     .contains(documentId);
@@ -132,6 +145,30 @@ class KnowledgePersistenceLocalIT {
             KnowledgeDocument rolledBackDocument = documentMapper.findById(documentId).orElseThrow();
             assertThat(rolledBackDocument.getStatus()).isEqualTo(DocumentStatus.PROCESSING);
             assertThat(rolledBackDocument.getChunkCount()).isEqualTo(2);
+
+            assertThat(documentMapper.updateStatus(documentId, DocumentStatus.READY, 2, null)).isEqualTo(1);
+            documentIndexStateService.markIndexing(documentId);
+            assertThat(documentMapper.findById(documentId).orElseThrow().getIndexStatus())
+                    .isEqualTo(DocumentIndexStatus.INDEXING);
+            assertThatThrownBy(() -> documentIndexStateService.markIndexing(persistedDocumentId))
+                    .isInstanceOf(InvalidDocumentIndexStateException.class);
+
+            documentIndexStateService.markFailed(documentId, "simulated index failure");
+            KnowledgeDocument failedIndex = documentMapper.findById(documentId).orElseThrow();
+            assertThat(failedIndex.getStatus()).isEqualTo(DocumentStatus.READY);
+            assertThat(failedIndex.getIndexStatus()).isEqualTo(DocumentIndexStatus.FAILED);
+            assertThat(failedIndex.getIndexErrorMessage()).isEqualTo("simulated index failure");
+            assertThat(failedIndex.getIndexedAt()).isNull();
+
+            documentIndexStateService.markIndexing(documentId);
+            documentIndexStateService.markIndexed(documentId);
+            KnowledgeDocument indexed = documentMapper.findById(documentId).orElseThrow();
+            assertThat(indexed.getStatus()).isEqualTo(DocumentStatus.READY);
+            assertThat(indexed.getIndexStatus()).isEqualTo(DocumentIndexStatus.INDEXED);
+            assertThat(indexed.getIndexErrorMessage()).isNull();
+            assertThat(indexed.getIndexedAt()).isNotNull();
+            assertThatThrownBy(() -> documentIndexStateService.markIndexing(persistedDocumentId))
+                    .isInstanceOf(InvalidDocumentIndexStateException.class);
         } finally {
             if (documentId != null) {
                 jdbcTemplate.update("DELETE FROM knowledge_chunk WHERE document_id = ?", documentId);

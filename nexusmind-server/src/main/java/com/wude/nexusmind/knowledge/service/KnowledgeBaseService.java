@@ -4,6 +4,7 @@ import com.wude.nexusmind.knowledge.domain.KnowledgeBase;
 import com.wude.nexusmind.knowledge.domain.KnowledgeBaseStatus;
 import com.wude.nexusmind.knowledge.exception.KnowledgeBaseNotFoundException;
 import com.wude.nexusmind.knowledge.mapper.KnowledgeBaseMapper;
+import com.wude.nexusmind.model.config.EmbeddingProperties;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,17 +17,24 @@ import java.util.List;
 public class KnowledgeBaseService {
 
     private final KnowledgeBaseMapper knowledgeBaseMapper;
+    private final EmbeddingProperties embeddingProperties;
 
-    public KnowledgeBaseService(KnowledgeBaseMapper knowledgeBaseMapper) {
+    public KnowledgeBaseService(KnowledgeBaseMapper knowledgeBaseMapper,
+                                EmbeddingProperties embeddingProperties) {
         this.knowledgeBaseMapper = knowledgeBaseMapper;
+        this.embeddingProperties = embeddingProperties;
     }
 
     @Transactional
-    public long create(KnowledgeBase knowledgeBase) {
+    public long create(String name, String description) {
+        KnowledgeBase knowledgeBase = new KnowledgeBase(
+                name,
+                description,
+                embeddingProperties.model(),
+                embeddingProperties.dimension(),
+                KnowledgeBaseStatus.ACTIVE
+        );
         requireValid(knowledgeBase, false);
-        if (knowledgeBase.getStatus() == null) {
-            knowledgeBase.setStatus(KnowledgeBaseStatus.ACTIVE);
-        }
         knowledgeBaseMapper.insert(knowledgeBase);
         if (knowledgeBase.getId() == null) {
             throw new IllegalStateException("Knowledge base ID was not generated");

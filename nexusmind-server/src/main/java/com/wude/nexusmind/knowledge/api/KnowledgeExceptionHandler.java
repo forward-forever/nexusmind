@@ -5,8 +5,13 @@ import com.wude.nexusmind.knowledge.exception.DocumentParsingException;
 import com.wude.nexusmind.knowledge.exception.DocumentStorageException;
 import com.wude.nexusmind.knowledge.exception.DocumentTooLargeException;
 import com.wude.nexusmind.knowledge.exception.InvalidDocumentStateException;
+import com.wude.nexusmind.knowledge.exception.InvalidDocumentIndexStateException;
 import com.wude.nexusmind.knowledge.exception.KnowledgeBaseNotFoundException;
 import com.wude.nexusmind.knowledge.exception.UnsupportedDocumentTypeException;
+import com.wude.nexusmind.rag.exception.EmbeddingConfigurationMismatchException;
+import com.wude.nexusmind.rag.exception.EmbeddingGenerationException;
+import com.wude.nexusmind.rag.exception.KnowledgeBaseInactiveException;
+import com.wude.nexusmind.rag.exception.VectorIndexException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
@@ -61,6 +66,42 @@ public class KnowledgeExceptionHandler {
     public ResponseEntity<ApiError> invalidState(InvalidDocumentStateException exception,
                                                   HttpServletRequest request) {
         return response(HttpStatus.CONFLICT, "INVALID_DOCUMENT_STATE", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(InvalidDocumentIndexStateException.class)
+    public ResponseEntity<ApiError> invalidIndexState(InvalidDocumentIndexStateException exception,
+                                                       HttpServletRequest request) {
+        return response(HttpStatus.CONFLICT, "INVALID_DOCUMENT_INDEX_STATE", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(EmbeddingConfigurationMismatchException.class)
+    public ResponseEntity<ApiError> embeddingConfigurationMismatch(
+            EmbeddingConfigurationMismatchException exception,
+            HttpServletRequest request) {
+        return response(HttpStatus.CONFLICT, "EMBEDDING_CONFIGURATION_MISMATCH",
+                exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(KnowledgeBaseInactiveException.class)
+    public ResponseEntity<ApiError> knowledgeBaseInactive(KnowledgeBaseInactiveException exception,
+                                                           HttpServletRequest request) {
+        return response(HttpStatus.CONFLICT, "KNOWLEDGE_BASE_INACTIVE", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(EmbeddingGenerationException.class)
+    public ResponseEntity<ApiError> embeddingFailure(EmbeddingGenerationException exception,
+                                                      HttpServletRequest request) {
+        log.error("Embedding request failed at {}", request.getRequestURI(), exception);
+        return response(HttpStatus.BAD_GATEWAY, "EMBEDDING_FAILURE",
+                "Embedding generation failed", request);
+    }
+
+    @ExceptionHandler(VectorIndexException.class)
+    public ResponseEntity<ApiError> vectorIndexFailure(VectorIndexException exception,
+                                                        HttpServletRequest request) {
+        log.error("Vector index operation failed at {}", request.getRequestURI(), exception);
+        return response(HttpStatus.SERVICE_UNAVAILABLE, "VECTOR_INDEX_FAILURE",
+                exception.getMessage(), request);
     }
 
     @ExceptionHandler(DocumentStorageException.class)

@@ -14,6 +14,9 @@ public class KnowledgeDocument {
     private DocumentStatus status;
     private Integer chunkCount;
     private String errorMessage;
+    private DocumentIndexStatus indexStatus;
+    private String indexErrorMessage;
+    private LocalDateTime indexedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -30,6 +33,7 @@ public class KnowledgeDocument {
         this.fileSha256 = fileSha256;
         this.status = DocumentStatus.UPLOADED;
         this.chunkCount = 0;
+        this.indexStatus = DocumentIndexStatus.NOT_INDEXED;
     }
 
     public Long getId() {
@@ -110,6 +114,30 @@ public class KnowledgeDocument {
 
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public DocumentIndexStatus getIndexStatus() {
+        return indexStatus;
+    }
+
+    public void setIndexStatus(DocumentIndexStatus indexStatus) {
+        this.indexStatus = indexStatus;
+    }
+
+    public String getIndexErrorMessage() {
+        return indexErrorMessage;
+    }
+
+    public void setIndexErrorMessage(String indexErrorMessage) {
+        this.indexErrorMessage = indexErrorMessage;
+    }
+
+    public LocalDateTime getIndexedAt() {
+        return indexedAt;
+    }
+
+    public void setIndexedAt(LocalDateTime indexedAt) {
+        this.indexedAt = indexedAt;
     }
 
     public LocalDateTime getCreatedAt() {

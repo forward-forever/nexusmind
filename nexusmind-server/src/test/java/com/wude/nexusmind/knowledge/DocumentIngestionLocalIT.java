@@ -1,8 +1,6 @@
 package com.wude.nexusmind.knowledge;
 
 import com.wude.nexusmind.knowledge.domain.DocumentStatus;
-import com.wude.nexusmind.knowledge.domain.KnowledgeBase;
-import com.wude.nexusmind.knowledge.domain.KnowledgeBaseStatus;
 import com.wude.nexusmind.knowledge.domain.KnowledgeChunk;
 import com.wude.nexusmind.knowledge.domain.KnowledgeDocument;
 import com.wude.nexusmind.knowledge.exception.DocumentParsingException;
@@ -42,7 +40,14 @@ import java.util.concurrent.Future;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.NONE,
+        properties = {
+                "spring.ai.model.embedding=none",
+                "nexusmind.vector.enabled=false",
+                "nexusmind.milvus.enabled=false"
+        }
+)
 @ActiveProfiles("local")
 class DocumentIngestionLocalIT {
 
@@ -81,14 +86,10 @@ class DocumentIngestionLocalIT {
     void txtMarkdownAndPdfFlowThroughStorageParserChunkerAndMysql() throws Exception {
         Long knowledgeBaseId = null;
         try {
-            KnowledgeBase knowledgeBase = new KnowledgeBase(
+            knowledgeBaseId = knowledgeBaseService.create(
                     "checkpoint-3-integration",
-                    "Document ingestion integration test",
-                    "text-embedding-planned",
-                    1536,
-                    KnowledgeBaseStatus.ACTIVE
+                    "Document ingestion integration test"
             );
-            knowledgeBaseId = knowledgeBaseService.create(knowledgeBase);
 
             byte[] txtBytes = ("NexusMind TXT 第一段。This text is long enough to demonstrate character chunking. "
                     + "第二段继续描述 upload storage parser chunk and MySQL persistence.")
