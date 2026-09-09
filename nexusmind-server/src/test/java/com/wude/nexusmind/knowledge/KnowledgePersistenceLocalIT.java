@@ -29,9 +29,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
                 "mybatis.configuration.log-impl=org.apache.ibatis.logging.stdout.StdOutImpl",
+                "spring.ai.model.chat=none",
                 "spring.ai.model.embedding=none",
                 "nexusmind.vector.enabled=false",
-                "nexusmind.milvus.enabled=false"
+                "nexusmind.milvus.enabled=false",
+                "nexusmind.rag.enabled=false"
         }
 )
 @ActiveProfiles("local")
@@ -104,6 +106,9 @@ class KnowledgePersistenceLocalIT {
             assertThat(documentMapper.findByKnowledgeBaseId(knowledgeBaseId))
                     .extracting(KnowledgeDocument::getId)
                     .contains(documentId);
+            assertThat(documentMapper.findByIds(List.of(documentId)))
+                    .extracting(KnowledgeDocument::getId)
+                    .containsExactly(documentId);
 
             assertThat(documentMapper.updateStatus(documentId, DocumentStatus.PROCESSING, 0, null))
                     .isEqualTo(1);

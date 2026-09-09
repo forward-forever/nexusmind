@@ -13,6 +13,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -59,6 +60,13 @@ public class DocumentService {
 
     public List<KnowledgeDocument> listByKnowledgeBase(long knowledgeBaseId) {
         return List.copyOf(documentMapper.findByKnowledgeBaseId(knowledgeBaseId));
+    }
+
+    public List<KnowledgeDocument> findByIds(Collection<Long> documentIds) {
+        if (documentIds == null || documentIds.isEmpty()) {
+            return List.of();
+        }
+        return List.copyOf(documentMapper.findByIds(documentIds));
     }
 
     public Optional<KnowledgeDocument> findByKnowledgeBaseAndSha256(long knowledgeBaseId, String sha256) {

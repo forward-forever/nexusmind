@@ -43,6 +43,15 @@ nexusmind:
       model: qwen3.7-text-embedding-flash
       dimension: 1024
       batch-size: 15
+    chat:
+      model: qwen3.5-flash
+      temperature: 0.2
+      default-top-k: 5
+      max-top-k: 10
+      max-context-chars: 12000
+      stream-timeout: 120s
+  rag:
+    enabled: false
   milvus:
     enabled: false
     uri: ${MILVUS_URI:http://localhost:19530}

@@ -12,8 +12,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
+                "spring.ai.model.chat=none",
                 "nexusmind.vector.enabled=false",
-                "nexusmind.milvus.enabled=false"
+                "nexusmind.milvus.enabled=false",
+                "nexusmind.rag.enabled=false"
         }
 )
 @ActiveProfiles("local")

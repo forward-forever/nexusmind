@@ -15,8 +15,8 @@ Upload → Temporary File + SHA-256 → Local Storage → MySQL Document
 | --- | --- | --- |
 | `nexusmind.storage.root` | `NEXUSMIND_STORAGE_ROOT` | `${user.home}/.nexusmind/storage` |
 | `nexusmind.storage.max-file-size` | `NEXUSMIND_MAX_FILE_SIZE` | `20MB` |
-| `nexusmind.chunking.chunk-size-chars` | `NEXUSMIND_CHUNK_SIZE_CHARS` | `1000` |
-| `nexusmind.chunking.chunk-overlap-chars` | `NEXUSMIND_CHUNK_OVERLAP_CHARS` | `150` |
+| `nexusmind.chunking.chunk-size-chars` | `NEXUSMIND_CHUNK_SIZE_CHARS` | `500` |
+| `nexusmind.chunking.chunk-overlap-chars` | `NEXUSMIND_CHUNK_OVERLAP_CHARS` | `100` |
 
 Spring Multipart 的单文件和单请求限制也使用 `NEXUSMIND_MAX_FILE_SIZE`。`chunk-overlap-chars` 必须大于等于 0 且小于 `chunk-size-chars`。
 

@@ -26,7 +26,7 @@ nexusmind:
     embedding:
       model: qwen3.7-text-embedding-flash
       dimension: 1024
-      batch-size: 20
+      batch-size: 15
   milvus:
     content-max-length: 8192
     hnsw:
@@ -120,8 +120,8 @@ curl -sS -X POST http://localhost:8080/api/knowledge-bases/10/search \
 
 COSINE score 越高表示越相似；响应保留 Milvus 原始 score 并按降序返回，不做 `1 - score`、threshold、rerank 或 LLM 回答。
 
-当 Document 包含大量 Chunk 时，同步 Index API 会串行执行多个批次。例如 698 个 Chunk 在 batch-size=20 时需要 35 次 Embedding 请求；人工 curl 验证应使用足够大的 `--max-time`。这是 V1 同步方案的已知限制，后续应通过异步 Index Task 解决，而不是违反 Provider 限制地扩大批次。
+当 Document 包含大量 Chunk 时，同步 Index API 会串行执行多个批次。例如 698 个 Chunk 在当前 batch-size=15 时需要 47 次 Embedding 请求；人工 curl 验证应使用足够大的 `--max-time`。这是 V1 同步方案的已知限制，后续应通过异步 Index Task 解决，而不是违反 Provider 限制地扩大批次。
 
 ## 当前边界
 
-BM25、Sparse Vector、Hybrid Search、RRF、Rerank、RAG Answer、Agent 和异步索引任务均未实现。
+RAG Answer 已在 Checkpoint 5 基于本检索器实现。BM25、Sparse Vector、Hybrid Search、RRF、Rerank、Agent 和异步索引任务仍未实现。

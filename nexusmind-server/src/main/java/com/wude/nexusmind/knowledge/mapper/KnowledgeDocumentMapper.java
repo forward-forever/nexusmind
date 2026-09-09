@@ -6,6 +6,7 @@ import com.wude.nexusmind.knowledge.domain.KnowledgeDocument;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,6 +20,8 @@ public interface KnowledgeDocumentMapper {
     Optional<KnowledgeDocument> findByIdForUpdate(long id);
 
     List<KnowledgeDocument> findByKnowledgeBaseId(long knowledgeBaseId);
+
+    List<KnowledgeDocument> findByIds(@Param("ids") Collection<Long> ids);
 
     Optional<KnowledgeDocument> findByKnowledgeBaseIdAndSha256(
             @Param("knowledgeBaseId") long knowledgeBaseId,

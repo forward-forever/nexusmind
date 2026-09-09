@@ -4,8 +4,18 @@ spring:
       on-profile: local
   ai:
     model:
+      chat: openai
       embedding: openai
     openai:
+      chat:
+        base-url: ${CHAT_BASE_URL}
+        api-key: ${DASHSCOPE_API_KEY}
+        model: ${nexusmind.ai.chat.model}
+        temperature: ${nexusmind.ai.chat.temperature}
+        extra-body:
+          enable_thinking: false
+        timeout: ${CHAT_TIMEOUT:60s}
+        max-retries: ${CHAT_MAX_RETRIES:1}
       embedding:
         base-url: ${EMBEDDING_BASE_URL}
         api-key: ${DASHSCOPE_API_KEY}
@@ -36,11 +46,20 @@ mybatis:
 nexusmind:
   vector:
     enabled: true
+  rag:
+    enabled: true
   ai:
     embedding:
       model: qwen3.7-text-embedding-flash
       dimension: 1024
-      batch-size: 20
+      batch-size: 15
+    chat:
+      model: qwen3.5-flash
+      temperature: 0.2
+      default-top-k: 5
+      max-top-k: 10
+      max-context-chars: 12000
+      stream-timeout: 120s
   milvus:
     enabled: true
     uri: ${MILVUS_URI:http://localhost:19530}
@@ -54,5 +73,5 @@ nexusmind:
     root: ${NEXUSMIND_STORAGE_ROOT:${user.home}/.nexusmind/storage}
     max-file-size: ${NEXUSMIND_MAX_FILE_SIZE:20MB}
   chunking:
-    chunk-size-chars: ${NEXUSMIND_CHUNK_SIZE_CHARS:1000}
-    chunk-overlap-chars: ${NEXUSMIND_CHUNK_OVERLAP_CHARS:150}
+    chunk-size-chars: ${NEXUSMIND_CHUNK_SIZE_CHARS:500}
+    chunk-overlap-chars: ${NEXUSMIND_CHUNK_OVERLAP_CHARS:100}

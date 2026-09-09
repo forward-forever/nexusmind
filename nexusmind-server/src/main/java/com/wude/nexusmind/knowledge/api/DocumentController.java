@@ -53,6 +53,13 @@ public class DocumentController {
                 .body(new UploadDocumentResponse(result.document(), result.duplicate()));
     }
 
+    @GetMapping("/knowledge-bases/{knowledgeBaseId}/documents")
+    public List<DocumentSummaryResponse> list(@PathVariable long knowledgeBaseId) {
+        return documentService.listByKnowledgeBase(knowledgeBaseId).stream()
+                .map(DocumentSummaryResponse::from)
+                .toList();
+    }
+
     @PostMapping("/documents/{documentId}/process")
     public KnowledgeDocument process(@PathVariable long documentId) {
         return processingService.process(documentId);
