@@ -1,6 +1,7 @@
 package com.wude.nexusmind.rag.api;
 
 import com.wude.nexusmind.rag.context.RagSource;
+import com.wude.nexusmind.rag.retrieval.RetrievalScoreType;
 
 public record RagSourceResponse(
         String id,
@@ -9,7 +10,8 @@ public record RagSourceResponse(
         String fileName,
         Integer pageNo,
         String sectionTitle,
-        float score
+        float score,
+        RetrievalScoreType scoreType
 ) {
 
     static RagSourceResponse from(RagSource source) {
@@ -20,6 +22,7 @@ public record RagSourceResponse(
                 source.fileName(),
                 source.pageNo(),
                 source.sectionTitle(),
-                source.score());
+                source.score(),
+                source.scoreType());
     }
 }

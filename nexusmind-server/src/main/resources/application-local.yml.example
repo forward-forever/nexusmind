@@ -52,14 +52,16 @@ nexusmind:
     embedding:
       model: qwen3.7-text-embedding-flash
       dimension: 1024
-      batch-size: 15
+      batch-size: ${NEXUSMIND_EMBEDDING_BATCH_SIZE:15}
+      max-batch-chars: ${NEXUSMIND_EMBEDDING_MAX_BATCH_CHARS:7500}
     chat:
       model: qwen3.5-flash
       temperature: 0.2
       default-top-k: 5
       max-top-k: 10
       max-context-chars: 12000
-      stream-timeout: 120s
+      stream-timeout: ${NEXUSMIND_CHAT_STREAM_TIMEOUT:120s}
+      mvc-timeout: ${NEXUSMIND_CHAT_MVC_TIMEOUT:150s}
   milvus:
     enabled: true
     uri: ${MILVUS_URI:http://localhost:19530}

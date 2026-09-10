@@ -11,7 +11,8 @@ public record RagChatProperties(
         int defaultTopK,
         int maxTopK,
         int maxContextChars,
-        Duration streamTimeout
+        Duration streamTimeout,
+        Duration mvcTimeout
 ) {
 
     public RagChatProperties {
@@ -29,6 +30,12 @@ public record RagChatProperties(
         }
         if (streamTimeout == null || streamTimeout.isZero() || streamTimeout.isNegative()) {
             throw new IllegalArgumentException("Chat stream-timeout must be positive");
+        }
+        if (mvcTimeout == null || mvcTimeout.isZero() || mvcTimeout.isNegative()) {
+            throw new IllegalArgumentException("Chat mvc-timeout must be positive");
+        }
+        if (mvcTimeout.compareTo(streamTimeout) <= 0) {
+            throw new IllegalArgumentException("Chat mvc-timeout must be greater than stream-timeout");
         }
     }
 }

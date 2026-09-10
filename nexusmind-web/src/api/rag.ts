@@ -101,6 +101,7 @@ function isRagSource(value: unknown): value is RagSource {
     typeof value.fileName === 'string' &&
     (value.pageNo === null || typeof value.pageNo === 'number') &&
     (value.sectionTitle === null || typeof value.sectionTitle === 'string') &&
-    typeof value.score === 'number'
+    typeof value.score === 'number' &&
+    typeof value.scoreType === 'string'
   )
 }

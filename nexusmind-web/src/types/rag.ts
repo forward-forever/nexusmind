@@ -6,6 +6,7 @@ export interface RagSource {
   pageNo: number | null
   sectionTitle: string | null
   score: number
+  scoreType: string
 }
 
 export interface SourcesEvent {

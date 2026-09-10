@@ -36,13 +36,14 @@ nexusmind:
       max-top-k: 10
       max-context-chars: 12000
       stream-timeout: 120s
+      mvc-timeout: 150s
 ```
 
-`max-context-chars` 是字符级安全上限，不是 Token Budget。Spring AI 与 NexusMind 应用配置引用相同的 model 和 temperature，避免配置分叉。默认 profile 关闭 Chat、Vector 与 RAG，所以普通测试无需 MySQL、Milvus、网络或 API Key。
+`max-context-chars` 是字符级安全上限，不是 Token Budget。模型 stream timeout 与 Spring MVC async timeout 分开配置，并强制 `mvc-timeout > stream-timeout`，让模型超时后仍有时间发送 SSE `error` 并关闭响应。Spring AI 与 NexusMind 应用配置引用相同的 model 和 temperature，避免配置分叉。默认 profile 关闭 Chat、Vector 与 RAG，所以普通测试无需 MySQL、Milvus、网络或 API Key。
 
 ## Retrieval、Context 与 Citation
 
-检索结果按原始 COSINE 排名进入 Context Builder。Builder 一次批量查询所有 `documentId`，从 MySQL 补齐 `original_file_name`，避免 N+1。每个真正进入上下文的完整 Chunk 按顺序获得 `S1`、`S2` 等稳定 ID。若加入下一个完整 Source 会超过字符上限，则停止，不截断 Chunk，也不向客户端公布未进入上下文的 Source。
+`RagChatService` 依赖稳定的 `RetrievalService`，不直接依赖 Dense 实现。Dense Retriever 把 Milvus `DenseVectorHit` 经 MySQL 可见性校验和文件名补齐后转换为 `RetrievalHit`；Context Builder 只接收上层 Hit。每个 Hit 同时携带 `score` 与 `scoreType`，V1 为 `COSINE`，避免未来把不同检索阶段的分数都误称为 similarity。每个真正进入上下文的完整 Chunk 按顺序获得 `S1`、`S2` 等稳定 ID。若加入下一个完整 Source 会超过字符上限，则停止，不截断 Chunk，也不向客户端公布未进入上下文的 Source。
 
 模型看到的 Source Block 包含文件名、可空页码、可空章节、Chunk ID、原始检索分数和正文。Milvus 对象、Embedding Vector、API Key 与无关数据库字段不会进入 Prompt。
 

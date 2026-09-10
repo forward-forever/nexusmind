@@ -27,6 +27,7 @@ nexusmind:
       model: qwen3.7-text-embedding-flash
       dimension: 1024
       batch-size: 15
+      max-batch-chars: 7500
   milvus:
     content-max-length: 8192
     hnsw:
@@ -35,7 +36,7 @@ nexusmind:
       ef: 64
 ```
 
-Spring AI OpenAI Embedding 的 model 和 dimensions 引用上述 NexusMind 配置，避免两套配置出现不一致。这些 HNSW 参数只是 V1 baseline，不代表最优值，后续应通过 Retrieval Evaluation 调优。
+Spring AI OpenAI Embedding 的 model 和 dimensions 引用上述 NexusMind 配置，避免两套配置出现不一致。文档 Embedding 批次同时受 15 条和 7500 chars 限制；7500 是 NexusMind 当前实测稳定 baseline，不是 Qwen 官方限制。单个超限 Chunk 会独立成批，避免 planner 死循环。这些 HNSW 参数同样只是 V1 baseline，不代表最优值。
 
 Spring AI 2.0.0 原生支持 `spring.ai.openai.embedding.timeout` 和 `max-retries`，本项目默认分别为 60 秒和 1 次重试。不需要另外定制 OkHttp timeout Bean。
 
@@ -67,7 +68,9 @@ NOT_INDEXED → INDEXING → INDEXED
 FAILED      → INDEXING → FAILED
 ```
 
-开始和完成/失败状态更改分别使用短 MySQL 事务。Embedding 与 Milvus 操作在事务外执行。每批最多 20 条 Chunk，Milvus 使用稳定 `chunk_id` upsert。中途失败时尝试按 `document_id` 删除已写入的 Entity，再将 `index_status` 记为 `FAILED`。这是状态机、幂等 upsert 和 best-effort 补偿，不是 MySQL + Milvus 分布式事务。
+开始和完成/失败状态更改分别使用短 MySQL 事务。Embedding 与 Milvus 操作在事务外执行。Milvus 使用稳定 `chunk_id` upsert。中途失败时尝试按 `document_id` 删除已写入的 Entity，再将 `index_status` 记为 `FAILED`。这是状态机、幂等 upsert 和 best-effort 补偿，不是 MySQL + Milvus 分布式事务。
+
+Milvus Search 只产生候选命中。Dense Retriever 会 over-fetch，并一次批量查询 MySQL；只有同属当前 KnowledgeBase 且 `status=READY`、`index_status=INDEXED` 的 Document 才能形成业务可见的 Retrieval Hit。FAILED、INDEXING、NOT_INDEXED、跨知识库和 orphan 候选全部过滤，过滤后仍保持原候选排名。这使补偿删除失败时残留的 derived vector 不会进入 RAG。
 
 ## 本地端到端验证
 

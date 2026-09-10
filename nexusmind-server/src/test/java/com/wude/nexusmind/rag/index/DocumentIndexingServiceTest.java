@@ -90,7 +90,7 @@ class DocumentIndexingServiceTest {
         CountingEmbeddingModel embeddingModel = new CountingEmbeddingModel(4, failOnCall);
         EmbeddingBatchService embeddingService = new EmbeddingBatchService(
                 embeddingModel,
-                new EmbeddingProperties("qwen3.7-text-embedding-flash", 4, 20));
+                new EmbeddingProperties("qwen3.7-text-embedding-flash", 4, 20, 7_500));
         RecordingVectorIndex vectorIndex = new RecordingVectorIndex();
         DocumentIndexingService service = new DocumentIndexingService(
                 documentService,
@@ -98,6 +98,8 @@ class DocumentIndexingServiceTest {
                 knowledgeBaseService,
                 chunkService,
                 embeddingService,
+                new EmbeddingBatchPlanner(
+                        new EmbeddingProperties("qwen3.7-text-embedding-flash", 4, 20, 7_500)),
                 vectorIndex,
                 new MilvusCollectionNamingStrategy());
         return new Fixture(service, stateService, embeddingModel, vectorIndex);

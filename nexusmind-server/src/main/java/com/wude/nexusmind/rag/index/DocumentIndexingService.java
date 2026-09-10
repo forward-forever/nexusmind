@@ -31,6 +31,7 @@ public class DocumentIndexingService {
     private final KnowledgeBaseService knowledgeBaseService;
     private final ChunkService chunkService;
     private final EmbeddingBatchService embeddingService;
+    private final EmbeddingBatchPlanner batchPlanner;
     private final DenseVectorIndex vectorIndex;
     private final MilvusCollectionNamingStrategy namingStrategy;
 
@@ -39,6 +40,7 @@ public class DocumentIndexingService {
                                    KnowledgeBaseService knowledgeBaseService,
                                    ChunkService chunkService,
                                    EmbeddingBatchService embeddingService,
+                                   EmbeddingBatchPlanner batchPlanner,
                                    DenseVectorIndex vectorIndex,
                                    MilvusCollectionNamingStrategy namingStrategy) {
         this.documentService = documentService;
@@ -46,6 +48,7 @@ public class DocumentIndexingService {
         this.knowledgeBaseService = knowledgeBaseService;
         this.chunkService = chunkService;
         this.embeddingService = embeddingService;
+        this.batchPlanner = batchPlanner;
         this.vectorIndex = vectorIndex;
         this.namingStrategy = namingStrategy;
     }
@@ -66,10 +69,8 @@ public class DocumentIndexingService {
 
             boolean collectionReady = false;
             int batchNumber = 0;
-            for (int start = 0; start < chunks.size(); start += embeddingService.batchSize()) {
+            for (List<KnowledgeChunk> batch : batchPlanner.plan(chunks)) {
                 batchNumber++;
-                int end = Math.min(start + embeddingService.batchSize(), chunks.size());
-                List<KnowledgeChunk> batch = chunks.subList(start, end);
                 List<float[]> vectors = embeddingService.embedBatch(
                         batch.stream().map(KnowledgeChunk::getContent).toList(),
                         knowledgeBase.getEmbeddingDimension(),

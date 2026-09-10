@@ -2,6 +2,7 @@ package com.wude.nexusmind.rag.chat;
 
 import com.wude.nexusmind.rag.context.RagContext;
 import com.wude.nexusmind.rag.context.RagSource;
+import com.wude.nexusmind.rag.retrieval.RetrievalScoreType;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -36,7 +37,8 @@ class RagPromptFactoryTest {
     }
 
     private static RagContext context(String content) {
-        RagSource source = new RagSource("S1", 1L, 2L, "mysql.pdf", 17, null, 0.9f, content);
+        RagSource source = new RagSource(
+                "S1", 1L, 2L, "mysql.pdf", 17, null, 0.9f, RetrievalScoreType.COSINE, content);
         String text = "===== SOURCE S1 =====\nfile: mysql.pdf\npage: 17\nchunk_id: 1\n\n"
                 + content + "\n===== END SOURCE S1 =====\n\n";
         return new RagContext(text, List.of(source), text.length());

@@ -5,9 +5,10 @@ import com.wude.nexusmind.rag.api.RagStreamEvent;
 import com.wude.nexusmind.rag.context.RagContext;
 import com.wude.nexusmind.rag.context.RagContextBuilder;
 import com.wude.nexusmind.rag.context.RagSource;
-import com.wude.nexusmind.rag.milvus.DenseVectorHit;
-import com.wude.nexusmind.rag.retrieval.DenseRetrievalService;
-import com.wude.nexusmind.rag.retrieval.DenseSearchResult;
+import com.wude.nexusmind.rag.retrieval.RetrievalHit;
+import com.wude.nexusmind.rag.retrieval.RetrievalResult;
+import com.wude.nexusmind.rag.retrieval.RetrievalScoreType;
+import com.wude.nexusmind.rag.retrieval.RetrievalService;
 import org.junit.jupiter.api.Test;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
@@ -40,7 +41,7 @@ class RagChatServiceTest {
         assertThat(events.subList(1, 5)).extracting(RagStreamEvent::content)
                 .containsExactly("MV", "CC", " 是", "...[S1]");
         assertThat(events.get(5).model()).isEqualTo("qwen3.5-flash");
-        verify(fixture.retrieval).search(7L, "explain MVCC", 5);
+        verify(fixture.retrieval).retrieve(7L, "explain MVCC", 5);
     }
 
     @Test
@@ -61,8 +62,8 @@ class RagChatServiceTest {
 
     @Test
     void retrievalFailureIsThrownSynchronouslyBeforeAFluxIsReturned() {
-        DenseRetrievalService retrieval = mock(DenseRetrievalService.class);
-        when(retrieval.search(7L, "question", 5)).thenThrow(new IllegalStateException("milvus unavailable"));
+        RetrievalService retrieval = mock(RetrievalService.class);
+        when(retrieval.retrieve(7L, "question", 5)).thenThrow(new IllegalStateException("milvus unavailable"));
         RagContextBuilder contextBuilder = mock(RagContextBuilder.class);
         ChatAnswerStreamer streamer = mock(ChatAnswerStreamer.class);
         RagChatService service = service(retrieval, contextBuilder, streamer);
@@ -77,11 +78,12 @@ class RagChatServiceTest {
 
     @Test
     void emptyRetrievalUsesAConsistentSseFlowWithoutCallingChatModel() {
-        DenseRetrievalService retrieval = mock(DenseRetrievalService.class);
+        RetrievalService retrieval = mock(RetrievalService.class);
         RagContextBuilder contextBuilder = mock(RagContextBuilder.class);
         ChatAnswerStreamer streamer = mock(ChatAnswerStreamer.class);
-        when(retrieval.search(7L, "unknown", 5)).thenReturn(
-                new DenseSearchResult("unknown", 7L, "embedding", 4, "COSINE", 5, List.of()));
+        when(retrieval.retrieve(7L, "unknown", 5)).thenReturn(
+                new RetrievalResult(
+                        "unknown", 7L, "embedding", 4, RetrievalScoreType.COSINE, 5, List.of()));
         when(contextBuilder.build(List.of())).thenReturn(new RagContext("", List.of(), 0));
 
         List<RagStreamEvent> events = service(retrieval, contextBuilder, streamer)
@@ -124,22 +126,25 @@ class RagChatServiceTest {
     }
 
     private static Fixture fixture(Flux<String> modelFlux, Duration streamTimeout) {
-        DenseRetrievalService retrieval = mock(DenseRetrievalService.class);
+        RetrievalService retrieval = mock(RetrievalService.class);
         RagContextBuilder contextBuilder = mock(RagContextBuilder.class);
         ChatAnswerStreamer streamer = mock(ChatAnswerStreamer.class);
-        DenseVectorHit hit = new DenseVectorHit(101L, 10L, 0, 0.9f, "content", 17, null);
-        RagSource source = new RagSource("S1", 101L, 10L, "mysql.pdf", 17, null, 0.9f, "content");
+        RetrievalHit hit = new RetrievalHit(
+                101L, 10L, "mysql.pdf", 0, 0.9f, RetrievalScoreType.COSINE, "content", 17, null);
+        RagSource source = new RagSource(
+                "S1", 101L, 10L, "mysql.pdf", 17, null, 0.9f, RetrievalScoreType.COSINE, "content");
         String contextText = "===== SOURCE S1 =====\ncontent\n===== END SOURCE S1 =====\n";
         RagContext context = new RagContext(contextText, List.of(source), contextText.length());
-        when(retrieval.search(org.mockito.ArgumentMatchers.eq(7L),
+        when(retrieval.retrieve(org.mockito.ArgumentMatchers.eq(7L),
                 org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt()))
-                .thenReturn(new DenseSearchResult("question", 7L, "embedding", 4, "COSINE", 5, List.of(hit)));
+                .thenReturn(new RetrievalResult(
+                        "question", 7L, "embedding", 4, RetrievalScoreType.COSINE, 5, List.of(hit)));
         when(contextBuilder.build(List.of(hit))).thenReturn(context);
         when(streamer.stream(org.mockito.ArgumentMatchers.any())).thenReturn(modelFlux);
         return new Fixture(service(retrieval, contextBuilder, streamer, streamTimeout), retrieval);
     }
 
-    private static RagChatService service(DenseRetrievalService retrieval,
+    private static RagChatService service(RetrievalService retrieval,
                                           RagContextBuilder contextBuilder,
                                           ChatAnswerStreamer streamer) {
         return new RagChatService(
@@ -150,7 +155,7 @@ class RagChatServiceTest {
                 properties(Duration.ofMinutes(2)));
     }
 
-    private static RagChatService service(DenseRetrievalService retrieval,
+    private static RagChatService service(RetrievalService retrieval,
                                           RagContextBuilder contextBuilder,
                                           ChatAnswerStreamer streamer,
                                           Duration streamTimeout) {
@@ -164,9 +169,10 @@ class RagChatServiceTest {
 
     private static RagChatProperties properties(Duration streamTimeout) {
         return new RagChatProperties(
-                "qwen3.5-flash", 0.2, 5, 10, 12_000, streamTimeout);
+                "qwen3.5-flash", 0.2, 5, 10, 12_000, streamTimeout,
+                streamTimeout.plusSeconds(30));
     }
 
-    private record Fixture(RagChatService service, DenseRetrievalService retrieval) {
+    private record Fixture(RagChatService service, RetrievalService retrieval) {
     }
 }

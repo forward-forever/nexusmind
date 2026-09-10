@@ -14,6 +14,7 @@ const source: RagSource = {
   pageNo: 17,
   sectionTitle: 'Deadlocks',
   score: 0.8231,
+  scoreType: 'COSINE',
 }
 
 describe('RAG stream reducer', () => {

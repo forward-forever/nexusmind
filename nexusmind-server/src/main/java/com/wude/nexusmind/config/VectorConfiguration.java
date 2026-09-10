@@ -2,6 +2,7 @@ package com.wude.nexusmind.config;
 
 import com.wude.nexusmind.model.config.EmbeddingProperties;
 import com.wude.nexusmind.rag.embedding.EmbeddingBatchService;
+import com.wude.nexusmind.rag.index.EmbeddingBatchPlanner;
 import com.wude.nexusmind.rag.milvus.DenseVectorIndex;
 import com.wude.nexusmind.rag.milvus.MilvusDenseVectorIndex;
 import com.wude.nexusmind.rag.milvus.MilvusProperties;
@@ -22,6 +23,12 @@ public class VectorConfiguration {
     EmbeddingBatchService embeddingBatchService(EmbeddingModel embeddingModel,
                                                 EmbeddingProperties embeddingProperties) {
         return new EmbeddingBatchService(embeddingModel, embeddingProperties);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "nexusmind.vector.enabled", havingValue = "true")
+    EmbeddingBatchPlanner embeddingBatchPlanner(EmbeddingProperties embeddingProperties) {
+        return new EmbeddingBatchPlanner(embeddingProperties);
     }
 
     @Bean(destroyMethod = "close")

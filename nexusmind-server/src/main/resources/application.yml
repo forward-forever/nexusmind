@@ -43,6 +43,7 @@ nexusmind:
       model: qwen3.7-text-embedding-flash
       dimension: 1024
       batch-size: 15
+      max-batch-chars: 7500
     chat:
       model: qwen3.5-flash
       temperature: 0.2
@@ -50,6 +51,7 @@ nexusmind:
       max-top-k: 10
       max-context-chars: 12000
       stream-timeout: 120s
+      mvc-timeout: 150s
   rag:
     enabled: false
   milvus:

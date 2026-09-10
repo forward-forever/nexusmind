@@ -5,9 +5,8 @@ import com.wude.nexusmind.rag.api.RagStreamEvent;
 import com.wude.nexusmind.rag.context.RagContext;
 import com.wude.nexusmind.rag.context.RagContextBuilder;
 import com.wude.nexusmind.rag.context.RagSource;
-import com.wude.nexusmind.rag.milvus.DenseVectorHit;
-import com.wude.nexusmind.rag.retrieval.DenseRetrievalService;
-import com.wude.nexusmind.rag.retrieval.DenseSearchResult;
+import com.wude.nexusmind.rag.retrieval.RetrievalResult;
+import com.wude.nexusmind.rag.retrieval.RetrievalService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -30,13 +29,13 @@ public class RagChatService {
     private static final String NO_RESULTS_MESSAGE = "当前知识库没有可用的检索结果。";
     private static final Pattern SOURCE_REFERENCE = Pattern.compile("\\[S(\\d+)]");
 
-    private final DenseRetrievalService retrievalService;
+    private final RetrievalService retrievalService;
     private final RagContextBuilder contextBuilder;
     private final RagPromptFactory promptFactory;
     private final ChatAnswerStreamer chatAnswerStreamer;
     private final RagChatProperties properties;
 
-    public RagChatService(DenseRetrievalService retrievalService,
+    public RagChatService(RetrievalService retrievalService,
                           RagContextBuilder contextBuilder,
                           RagPromptFactory promptFactory,
                           ChatAnswerStreamer chatAnswerStreamer,
@@ -54,9 +53,9 @@ public class RagChatService {
         long requestStarted = System.nanoTime();
 
         long retrievalStarted = System.nanoTime();
-        DenseSearchResult searchResult = retrievalService.search(knowledgeBaseId, normalizedQuestion, topK);
+        RetrievalResult searchResult = retrievalService.retrieve(knowledgeBaseId, normalizedQuestion, topK);
         long retrievalLatencyMs = elapsedMillis(retrievalStarted);
-        RagContext context = contextBuilder.build(searchResult.results());
+        RagContext context = contextBuilder.build(searchResult.hits());
         logRetrieval(knowledgeBaseId, normalizedQuestion, topK, searchResult, context, retrievalLatencyMs);
 
         RagStreamEvent sourcesEvent = RagStreamEvent.sources(context.sources());
@@ -140,10 +139,10 @@ public class RagChatService {
     private static void logRetrieval(long knowledgeBaseId,
                                      String question,
                                      int topK,
-                                     DenseSearchResult result,
+                                     RetrievalResult result,
                                      RagContext context,
                                      long retrievalLatencyMs) {
-        String retrieved = result.results().stream()
+        String retrieved = result.hits().stream()
                 .map(hit -> hit.chunkId() + ":" + hit.score())
                 .toList()
                 .toString();

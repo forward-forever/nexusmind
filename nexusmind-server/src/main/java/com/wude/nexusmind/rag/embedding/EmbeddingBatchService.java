@@ -45,13 +45,20 @@ public class EmbeddingBatchService {
                     "Embedding batch size %d exceeds configured maximum %d"
                             .formatted(texts.size(), properties.batchSize()));
         }
+        int batchChars = texts.stream().mapToInt(String::length).sum();
+        if (texts.size() > 1 && batchChars > properties.maxBatchChars()) {
+            throw new IllegalArgumentException(
+                    "Embedding batch characters %d exceed configured maximum %d"
+                            .formatted(batchChars, properties.maxBatchChars()));
+        }
         long startedAt = System.nanoTime();
         try {
             List<float[]> vectors = embeddingModel.embed(List.copyOf(texts));
             validateVectors(vectors, texts.size(), expectedDimension);
-            log.info("Embedding batch completed: batch={}, size={}, latencyMs={}, model={}, dimension={}",
+            log.info("Embedding batch completed: batch={}, size={}, chars={}, latencyMs={}, model={}, dimension={}",
                     batchNumber,
                     texts.size(),
+                    batchChars,
                     Duration.ofNanos(System.nanoTime() - startedAt).toMillis(),
                     properties.model(),
                     expectedDimension);
@@ -74,6 +81,10 @@ public class EmbeddingBatchService {
 
     public int batchSize() {
         return properties.batchSize();
+    }
+
+    public int maxBatchChars() {
+        return properties.maxBatchChars();
     }
 
     public String model() {

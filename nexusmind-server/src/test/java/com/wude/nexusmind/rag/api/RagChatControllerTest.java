@@ -1,6 +1,7 @@
 package com.wude.nexusmind.rag.api;
 
 import com.wude.nexusmind.rag.chat.RagChatService;
+import com.wude.nexusmind.rag.retrieval.RetrievalScoreType;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -23,7 +24,7 @@ class RagChatControllerTest {
     void springMvcSerializesTheFluxAsStableServerSentEvents() throws Exception {
         RagChatService service = mock(RagChatService.class);
         RagSourceResponse source = new RagSourceResponse(
-                "S1", 101L, 10L, "mysql.pdf", 17, null, 0.82f);
+                "S1", 101L, 10L, "mysql.pdf", 17, null, 0.82f, RetrievalScoreType.COSINE);
         when(service.stream(7L, "question", 5)).thenReturn(Flux.just(
                 new RagStreamEvent("sources", List.of(source), null, null, null, null, null),
                 RagStreamEvent.delta("answer [S1]"),
@@ -47,7 +48,8 @@ class RagChatControllerTest {
                 .isLessThan(body.indexOf("\"type\":\"delta\""));
         assertThat(body.indexOf("\"type\":\"delta\""))
                 .isLessThan(body.indexOf("\"type\":\"done\""));
-        assertThat(body).contains("\"id\":\"S1\"", "\"fileName\":\"mysql.pdf\"", "answer [S1]");
+        assertThat(body).contains(
+                "\"id\":\"S1\"", "\"fileName\":\"mysql.pdf\"", "\"scoreType\":\"COSINE\"", "answer [S1]");
         assertThat(body).doesNotContain("contentPreview", "embedding");
     }
 }

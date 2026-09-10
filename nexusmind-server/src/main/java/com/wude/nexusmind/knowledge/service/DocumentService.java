@@ -23,6 +23,8 @@ import java.util.Optional;
 @Transactional(readOnly = true)
 public class DocumentService {
 
+    static final int CHUNK_INSERT_BATCH_SIZE = 500;
+
     private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final KnowledgeDocumentMapper documentMapper;
     private final KnowledgeChunkMapper chunkMapper;
@@ -111,8 +113,9 @@ public class DocumentService {
         }
 
         chunkMapper.deleteByDocumentId(documentId);
-        if (!chunks.isEmpty()) {
-            chunkMapper.batchInsert(chunks);
+        for (int start = 0; start < chunks.size(); start += CHUNK_INSERT_BATCH_SIZE) {
+            int end = Math.min(start + CHUNK_INSERT_BATCH_SIZE, chunks.size());
+            chunkMapper.batchInsert(chunks.subList(start, end));
         }
         updateStatus(documentId, DocumentStatus.READY, chunks.size(), null);
     }

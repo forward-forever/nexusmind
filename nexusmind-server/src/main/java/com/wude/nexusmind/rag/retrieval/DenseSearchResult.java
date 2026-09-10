@@ -1,7 +1,5 @@
 package com.wude.nexusmind.rag.retrieval;
 
-import com.wude.nexusmind.rag.milvus.DenseVectorHit;
-
 import java.util.List;
 
 public record DenseSearchResult(
@@ -11,9 +9,20 @@ public record DenseSearchResult(
         int dimension,
         String metric,
         int topK,
-        List<DenseVectorHit> results
+        List<RetrievalHit> results
 ) {
     public DenseSearchResult {
         results = List.copyOf(results);
+    }
+
+    public static DenseSearchResult from(RetrievalResult result) {
+        return new DenseSearchResult(
+                result.query(),
+                result.knowledgeBaseId(),
+                result.model(),
+                result.dimension(),
+                result.scoreType().name(),
+                result.topK(),
+                result.hits());
     }
 }

@@ -8,7 +8,7 @@ describe('streamRagAnswer', () => {
   it('parses SSE events split across arbitrary network chunks', async () => {
     const payload = [
       'data:{"type":"sources","sources":[{"id":"S1","chunkId":101,"documentId":10,',
-      '"fileName":"mysql.pdf","pageNo":17,"sectionTitle":"Deadlocks","score":0.8231}]}\n\n',
+      '"fileName":"mysql.pdf","pageNo":17,"sectionTitle":"Deadlocks","score":0.8231,"scoreType":"COSINE"}]}\n\n',
       'data:{"type":"delta","content":"MV"}\n\n',
       'data:{"type":"delta","content":"CC"}\n\n',
       'data:{"type":"done","model":"qwen3.5-flash","elapsedMs":1320}\n\n',
@@ -38,7 +38,10 @@ describe('streamRagAnswer', () => {
     })
 
     expect(events.map((event) => event.type)).toEqual(['sources', 'delta', 'delta', 'done'])
-    expect(events[0]).toMatchObject({ type: 'sources', sources: [{ id: 'S1', pageNo: 17 }] })
+    expect(events[0]).toMatchObject({
+      type: 'sources',
+      sources: [{ id: 'S1', pageNo: 17, scoreType: 'COSINE' }],
+    })
   })
 
   it('preserves a pre-stream backend JSON error', async () => {

@@ -31,6 +31,6 @@ public class RagWebMvcConfiguration implements WebMvcConfigurer {
     @Override
     public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
         configurer.setTaskExecutor(ragMvcTaskExecutor());
-        configurer.setDefaultTimeout(properties.streamTimeout().toMillis());
+        configurer.setDefaultTimeout(properties.mvcTimeout().toMillis());
     }
 }

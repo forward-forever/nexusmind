@@ -24,7 +24,7 @@ defineProps<{ sources: RagSource[]; highlightedSourceId: string | null }>()
           <div class="source-metadata">
             <span v-if="source.pageNo !== null">Page {{ source.pageNo }}</span>
             <span v-if="source.sectionTitle">{{ source.sectionTitle }}</span>
-            <span>Similarity {{ source.score.toFixed(4) }}</span>
+            <span>{{ source.scoreType }} {{ source.score.toFixed(4) }}</span>
             <span>Chunk #{{ source.chunkId }}</span>
           </div>
         </div>

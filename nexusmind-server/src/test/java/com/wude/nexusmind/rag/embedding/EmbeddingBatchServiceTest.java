@@ -47,6 +47,27 @@ class EmbeddingBatchServiceTest {
     }
 
     @Test
+    void rejectsMultiItemBatchOverConfiguredCharacterLimit() {
+        EmbeddingBatchService service = new EmbeddingBatchService(
+                new StubEmbeddingModel(4),
+                new EmbeddingProperties("qwen3.7-text-embedding-flash", 4, 15, 10));
+
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> service.embedBatch(List.of("123456", "12345"), 4, 1))
+                .withMessageContaining("characters 11")
+                .withMessageContaining("maximum 10");
+    }
+
+    @Test
+    void allowsSingleOversizedItemSoThePlannerCannotDeadlock() {
+        EmbeddingBatchService service = new EmbeddingBatchService(
+                new StubEmbeddingModel(4),
+                new EmbeddingProperties("qwen3.7-text-embedding-flash", 4, 15, 10));
+
+        assertThat(service.embedBatch(List.of("x".repeat(11)), 4, 1)).hasSize(1);
+    }
+
+    @Test
     void rejectsWrongVectorCount() {
         StubEmbeddingModel model = new StubEmbeddingModel(4);
         model.dropLastVector = true;
@@ -93,7 +114,7 @@ class EmbeddingBatchServiceTest {
     private static EmbeddingBatchService service(EmbeddingModel model, int batchSize) {
         return new EmbeddingBatchService(
                 model,
-                new EmbeddingProperties("qwen3.7-text-embedding-flash", 4, batchSize));
+                new EmbeddingProperties("qwen3.7-text-embedding-flash", 4, batchSize, 7_500));
     }
 
     static final class StubEmbeddingModel implements EmbeddingModel {

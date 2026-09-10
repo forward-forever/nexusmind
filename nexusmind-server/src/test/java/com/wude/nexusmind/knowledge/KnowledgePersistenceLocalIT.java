@@ -20,6 +20,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -128,6 +129,18 @@ class KnowledgePersistenceLocalIT {
             assertThat(chunkMapper.deleteByDocumentId(documentId)).isEqualTo(2);
             assertThat(chunkMapper.findByDocumentId(documentId)).isEmpty();
 
+            List<KnowledgeChunk> largeReplacement = new ArrayList<>(1_201);
+            for (int index = 0; index < 1_201; index++) {
+                largeReplacement.add(chunk(
+                        knowledgeBaseId, documentId, index, "large replacement " + index));
+            }
+            documentService.replaceChunksAndMarkReady(documentId, largeReplacement);
+            assertThat(largeReplacement).allSatisfy(chunk -> assertThat(chunk.getId()).isNotNull());
+            assertThat(chunkMapper.findByDocumentId(documentId)).hasSize(1_201);
+            assertThat(documentMapper.findById(documentId).orElseThrow().getChunkCount()).isEqualTo(1_201);
+
+            assertThat(chunkMapper.deleteByDocumentId(documentId)).isEqualTo(1_201);
+
             List<KnowledgeChunk> rollbackBaseline = List.of(
                     chunk(knowledgeBaseId, documentId, 0, "rollback baseline zero"),
                     chunk(knowledgeBaseId, documentId, 1, "rollback baseline one")
@@ -137,10 +150,13 @@ class KnowledgePersistenceLocalIT {
                     .isEqualTo(1);
 
             long persistedDocumentId = documentId;
-            List<KnowledgeChunk> duplicateIndexes = List.of(
-                chunk(knowledgeBaseId, documentId, 0, "replacement zero"),
-                chunk(knowledgeBaseId, documentId, 0, "duplicate replacement zero")
-            );
+            List<KnowledgeChunk> duplicateIndexes = new ArrayList<>(1_201);
+            for (int index = 0; index < 1_201; index++) {
+                duplicateIndexes.add(chunk(
+                        knowledgeBaseId, documentId, index, "rollback candidate " + index));
+            }
+            duplicateIndexes.set(700, chunk(
+                    knowledgeBaseId, documentId, 0, "duplicate index in second batch"));
             assertThatThrownBy(() -> documentService.replaceChunksAndMarkReady(persistedDocumentId, duplicateIndexes))
                     .isInstanceOf(DataAccessException.class);
 

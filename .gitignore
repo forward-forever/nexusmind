@@ -45,3 +45,7 @@ logs/
 *.pid
 *.pid.lock
 
+
+# Claude
+.claude/settings.local.json
+
