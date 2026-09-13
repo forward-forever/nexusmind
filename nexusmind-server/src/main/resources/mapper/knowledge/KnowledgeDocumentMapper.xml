@@ -92,4 +92,13 @@
         WHERE id = #{id}
     </update>
 
+    <update id="resetIndexStatusByKnowledgeBaseId">
+        UPDATE knowledge_document
+        SET index_status = 'NOT_INDEXED',
+            index_error_message = NULL,
+            indexed_at = NULL
+        WHERE knowledge_base_id = #{knowledgeBaseId}
+          AND status = 'READY'
+    </update>
+
 </mapper>

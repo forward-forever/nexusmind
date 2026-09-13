@@ -108,12 +108,12 @@ class DenseRetrievalServiceTest {
                                                   DenseVectorIndex index) {
         return new DenseRetrievalService(
                 knowledgeBases,
-                documents,
                 new EmbeddingBatchService(
                         model,
                         new EmbeddingProperties("qwen3.7-text-embedding-flash", 4, 20, 7_500)),
                 index,
-                new MilvusCollectionNamingStrategy());
+                new MilvusCollectionNamingStrategy(),
+                new RetrievalVisibilityFilter(documents));
     }
 
     private static DenseVectorHit hit(long chunkId, long documentId, float score) {

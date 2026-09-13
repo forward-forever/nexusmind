@@ -33,7 +33,8 @@ class MilvusDenseVectorIndexLocalIT {
                 uri,
                 8192,
                 Duration.ofSeconds(30),
-                new MilvusProperties.Hnsw(32, 200, 64));
+                new MilvusProperties.Hnsw(32, 200, 64),
+                new MilvusProperties.Bm25("DAAT_MAXSCORE", 1.2, 0.75, "chinese"));
         MilvusDenseVectorIndex index = new MilvusDenseVectorIndex(client, properties);
 
         try {

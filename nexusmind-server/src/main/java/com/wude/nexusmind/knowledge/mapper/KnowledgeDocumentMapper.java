@@ -35,4 +35,6 @@ public interface KnowledgeDocumentMapper {
     int updateIndexStatus(@Param("id") long id,
                           @Param("indexStatus") DocumentIndexStatus indexStatus,
                           @Param("indexErrorMessage") String indexErrorMessage);
+
+    int resetIndexStatusByKnowledgeBaseId(long knowledgeBaseId);
 }

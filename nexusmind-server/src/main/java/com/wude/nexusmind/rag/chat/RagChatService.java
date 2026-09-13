@@ -6,7 +6,9 @@ import com.wude.nexusmind.rag.context.RagContext;
 import com.wude.nexusmind.rag.context.RagContextBuilder;
 import com.wude.nexusmind.rag.context.RagSource;
 import com.wude.nexusmind.rag.retrieval.RetrievalResult;
+import com.wude.nexusmind.rag.retrieval.RagRetrievalProperties;
 import com.wude.nexusmind.rag.retrieval.RetrievalService;
+import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -35,12 +37,13 @@ public class RagChatService {
     private final ChatAnswerStreamer chatAnswerStreamer;
     private final RagChatProperties properties;
 
-    public RagChatService(RetrievalService retrievalService,
+    public RagChatService(RetrievalServiceRegistry retrievalServiceRegistry,
+                          RagRetrievalProperties retrievalProperties,
                           RagContextBuilder contextBuilder,
                           RagPromptFactory promptFactory,
                           ChatAnswerStreamer chatAnswerStreamer,
                           RagChatProperties properties) {
-        this.retrievalService = retrievalService;
+        this.retrievalService = retrievalServiceRegistry.get(retrievalProperties.retriever());
         this.contextBuilder = contextBuilder;
         this.promptFactory = promptFactory;
         this.chatAnswerStreamer = chatAnswerStreamer;

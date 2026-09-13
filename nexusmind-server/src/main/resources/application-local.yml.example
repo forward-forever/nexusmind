@@ -48,6 +48,7 @@ nexusmind:
     enabled: true
   rag:
     enabled: true
+    retriever: ${NEXUSMIND_RAG_RETRIEVER:DENSE}
   ai:
     embedding:
       model: qwen3.7-text-embedding-flash
@@ -71,6 +72,11 @@ nexusmind:
       m: 32
       ef-construction: 200
       ef: 64
+    bm25:
+      inverted-index-algo: DAAT_MAXSCORE
+      k1: 1.2
+      b: 0.75
+      analyzer: chinese
   storage:
     root: ${NEXUSMIND_STORAGE_ROOT:${user.home}/.nexusmind/storage}
     max-file-size: ${NEXUSMIND_MAX_FILE_SIZE:20MB}

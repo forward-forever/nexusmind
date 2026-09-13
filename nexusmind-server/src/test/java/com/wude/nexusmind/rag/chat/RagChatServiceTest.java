@@ -9,6 +9,8 @@ import com.wude.nexusmind.rag.retrieval.RetrievalHit;
 import com.wude.nexusmind.rag.retrieval.RetrievalResult;
 import com.wude.nexusmind.rag.retrieval.RetrievalScoreType;
 import com.wude.nexusmind.rag.retrieval.RetrievalService;
+import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
+import com.wude.nexusmind.rag.retrieval.RagRetrievalProperties;
 import com.wude.nexusmind.rag.retrieval.RetrieverType;
 import org.junit.jupiter.api.Test;
 import reactor.core.Disposable;
@@ -26,6 +28,35 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class RagChatServiceTest {
+
+    @Test
+    void keepsDenseAsProductRetrieverWhenRegistryAlsoContainsBm25() {
+        RetrievalService dense = mock(RetrievalService.class);
+        RetrievalService bm25 = mock(RetrievalService.class);
+        when(dense.type()).thenReturn(RetrieverType.DENSE);
+        when(bm25.type()).thenReturn(RetrieverType.BM25);
+        when(dense.retrieve(7L, "question", 5)).thenReturn(new RetrievalResult(
+                "question", 7L, "embedding", 4, RetrieverType.DENSE,
+                RetrievalScoreType.COSINE, 5, List.of()));
+        RagContextBuilder contextBuilder = mock(RagContextBuilder.class);
+        when(contextBuilder.build(List.of())).thenReturn(new RagContext("", List.of(), 0));
+        ChatAnswerStreamer streamer = mock(ChatAnswerStreamer.class);
+        RagChatService service = new RagChatService(
+                new RetrievalServiceRegistry(List.of(dense, bm25)),
+                new RagRetrievalProperties(RetrieverType.DENSE),
+                contextBuilder,
+                new RagPromptFactory(),
+                streamer,
+                properties(Duration.ofMinutes(2)));
+
+        service.stream(7L, "question", null).collectList().block();
+
+        verify(dense).retrieve(7L, "question", 5);
+        verify(bm25, never()).retrieve(
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyInt());
+    }
 
     @Test
     void streamsSourcesThenRealModelDeltasThenDone() {
@@ -150,8 +181,10 @@ class RagChatServiceTest {
     private static RagChatService service(RetrievalService retrieval,
                                           RagContextBuilder contextBuilder,
                                           ChatAnswerStreamer streamer) {
+        when(retrieval.type()).thenReturn(RetrieverType.DENSE);
         return new RagChatService(
-                retrieval,
+                new RetrievalServiceRegistry(List.of(retrieval)),
+                new RagRetrievalProperties(RetrieverType.DENSE),
                 contextBuilder,
                 new RagPromptFactory(),
                 streamer,
@@ -162,8 +195,10 @@ class RagChatServiceTest {
                                           RagContextBuilder contextBuilder,
                                           ChatAnswerStreamer streamer,
                                           Duration streamTimeout) {
+        when(retrieval.type()).thenReturn(RetrieverType.DENSE);
         return new RagChatService(
-                retrieval,
+                new RetrievalServiceRegistry(List.of(retrieval)),
+                new RagRetrievalProperties(RetrieverType.DENSE),
                 contextBuilder,
                 new RagPromptFactory(),
                 streamer,

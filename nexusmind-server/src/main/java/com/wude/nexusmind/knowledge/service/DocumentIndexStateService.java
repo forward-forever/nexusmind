@@ -52,6 +52,14 @@ public class DocumentIndexStateService {
         update(documentId, DocumentIndexStatus.FAILED, errorMessage);
     }
 
+    @Transactional
+    public int resetReadyDocumentsForRebuild(long knowledgeBaseId) {
+        if (knowledgeBaseId <= 0) {
+            throw new IllegalArgumentException("Knowledge base ID must be positive");
+        }
+        return documentMapper.resetIndexStatusByKnowledgeBaseId(knowledgeBaseId);
+    }
+
     private KnowledgeDocument findForUpdate(long documentId) {
         return documentMapper.findByIdForUpdate(documentId)
                 .orElseThrow(() -> new DocumentNotFoundException(documentId));

@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonArray;
 import com.wude.nexusmind.knowledge.domain.KnowledgeChunk;
 import com.wude.nexusmind.rag.exception.VectorIndexException;
+import io.milvus.common.clientenum.FunctionType;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.common.ConsistencyLevel;
 import io.milvus.v2.common.DataType;
@@ -12,6 +13,7 @@ import io.milvus.v2.common.IndexParam;
 import io.milvus.v2.service.collection.request.AddFieldReq;
 import io.milvus.v2.service.collection.request.CreateCollectionReq;
 import io.milvus.v2.service.collection.request.DescribeCollectionReq;
+import io.milvus.v2.service.collection.request.DropCollectionReq;
 import io.milvus.v2.service.collection.request.GetLoadStateReq;
 import io.milvus.v2.service.collection.request.HasCollectionReq;
 import io.milvus.v2.service.collection.request.LoadCollectionReq;
@@ -23,6 +25,7 @@ import io.milvus.v2.service.vector.request.DeleteReq;
 import io.milvus.v2.service.vector.request.SearchReq;
 import io.milvus.v2.service.vector.request.UpsertReq;
 import io.milvus.v2.service.vector.request.data.FloatVec;
+import io.milvus.v2.service.vector.request.data.EmbeddedText;
 import io.milvus.v2.service.vector.response.SearchResp;
 import io.milvus.v2.service.vector.response.UpsertResp;
 
@@ -34,7 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-public class MilvusDenseVectorIndex implements DenseVectorIndex {
+public class MilvusDenseVectorIndex implements DenseVectorIndex, Bm25SparseIndex, MilvusCollectionAdmin {
 
     public static final String CHUNK_ID = "chunk_id";
     public static final String KNOWLEDGE_BASE_ID = "knowledge_base_id";
@@ -44,8 +47,11 @@ public class MilvusDenseVectorIndex implements DenseVectorIndex {
     public static final String PAGE_NO = "page_no";
     public static final String SECTION_TITLE = "section_title";
     public static final String EMBEDDING = "embedding";
+    public static final String SPARSE_EMBEDDING = "sparse_embedding";
 
     private static final String EMBEDDING_INDEX = "embedding_hnsw";
+    private static final String SPARSE_INDEX = "sparse_embedding_bm25";
+    private static final String BM25_FUNCTION = "content_bm25";
     private static final int SECTION_TITLE_MAX_LENGTH = 2048;
     private static final List<String> SEARCH_OUTPUT_FIELDS = List.of(
             CHUNK_ID, DOCUMENT_ID, CHUNK_INDEX, CONTENT, PAGE_NO, SECTION_TITLE);
@@ -67,6 +73,7 @@ public class MilvusDenseVectorIndex implements DenseVectorIndex {
             }
             validateCollection(collectionName, dimension);
             ensureHnswIndex(collectionName);
+            ensureBm25Index(collectionName);
             ensureLoaded(collectionName);
         } catch (VectorIndexException exception) {
             throw exception;
@@ -84,6 +91,7 @@ public class MilvusDenseVectorIndex implements DenseVectorIndex {
             }
             validateCollection(collectionName, dimension);
             validateHnswIndex(collectionName);
+            validateBm25Index(collectionName);
             ensureLoaded(collectionName);
         } catch (VectorIndexException exception) {
             throw exception;
@@ -139,6 +147,24 @@ public class MilvusDenseVectorIndex implements DenseVectorIndex {
     }
 
     @Override
+    public void dropCollection(String collectionName) {
+        if (collectionName == null || collectionName.isBlank()) {
+            throw new IllegalArgumentException("Collection name is required");
+        }
+        try {
+            if (hasCollection(collectionName)) {
+                client.dropCollection(DropCollectionReq.builder()
+                        .collectionName(collectionName)
+                        .async(false)
+                        .timeout(properties.readyTimeout().toMillis())
+                        .build());
+            }
+        } catch (RuntimeException exception) {
+            throw new VectorIndexException("Failed to drop Milvus collection " + collectionName, exception);
+        }
+    }
+
+    @Override
     public List<DenseVectorHit> search(String collectionName,
                                        long knowledgeBaseId,
                                        float[] queryVector,
@@ -170,6 +196,39 @@ public class MilvusDenseVectorIndex implements DenseVectorIndex {
         }
     }
 
+    @Override
+    public List<Bm25SparseHit> search(String collectionName,
+                                      long knowledgeBaseId,
+                                      String query,
+                                      int topK,
+                                      int dimension) {
+        if (query == null || query.isBlank()) {
+            throw new IllegalArgumentException("BM25 query is required");
+        }
+        ensureExistingCollectionReady(collectionName, dimension);
+        try {
+            SearchResp response = client.search(SearchReq.builder()
+                    .collectionName(collectionName)
+                    .annsField(SPARSE_EMBEDDING)
+                    .metricType(IndexParam.MetricType.BM25)
+                    .topK(topK)
+                    .filter(KNOWLEDGE_BASE_ID + " == " + knowledgeBaseId)
+                    .outputFields(SEARCH_OUTPUT_FIELDS)
+                    .data(List.of(new EmbeddedText(query)))
+                    .consistencyLevel(ConsistencyLevel.STRONG)
+                    .build());
+            if (response.getSearchResults().isEmpty()) {
+                return List.of();
+            }
+            return response.getSearchResults().get(0).stream()
+                    .map(this::toBm25Hit)
+                    .sorted(Comparator.comparingDouble(Bm25SparseHit::score).reversed())
+                    .toList();
+        } catch (RuntimeException exception) {
+            throw new VectorIndexException("BM25 search failed for collection " + collectionName, exception);
+        }
+    }
+
     private boolean hasCollection(String collectionName) {
         return Boolean.TRUE.equals(client.hasCollection(HasCollectionReq.builder()
                 .collectionName(collectionName)
@@ -184,15 +243,32 @@ public class MilvusDenseVectorIndex implements DenseVectorIndex {
         schema.addField(field(KNOWLEDGE_BASE_ID, DataType.Int64, false, null, null, false, false));
         schema.addField(field(DOCUMENT_ID, DataType.Int64, false, null, null, false, false));
         schema.addField(field(CHUNK_INDEX, DataType.Int32, false, null, null, false, false));
-        schema.addField(field(CONTENT, DataType.VarChar, false, properties.contentMaxLength(), null, false, false));
+        schema.addField(AddFieldReq.builder()
+                .fieldName(CONTENT)
+                .dataType(DataType.VarChar)
+                .isNullable(false)
+                .maxLength(properties.contentMaxLength())
+                .enableAnalyzer(true)
+                .analyzerParams(Map.of("type", properties.bm25().analyzer()))
+                .enableMatch(false)
+                .build());
         schema.addField(field(PAGE_NO, DataType.Int32, true, null, null, false, false));
         schema.addField(field(SECTION_TITLE, DataType.VarChar, true, SECTION_TITLE_MAX_LENGTH, null, false, false));
         schema.addField(field(EMBEDDING, DataType.FloatVector, false, null, dimension, false, false));
+        schema.addField(field(SPARSE_EMBEDDING, DataType.SparseFloatVector,
+                false, null, null, false, false));
+        schema.addFunction(CreateCollectionReq.Function.builder()
+                .name(BM25_FUNCTION)
+                .description("Generate BM25 sparse vectors from chunk content")
+                .functionType(FunctionType.BM25)
+                .inputFieldNames(List.of(CONTENT))
+                .outputFieldNames(List.of(SPARSE_EMBEDDING))
+                .build());
 
         try {
             client.createCollection(CreateCollectionReq.builder()
                     .collectionName(collectionName)
-                    .description("NexusMind dense retrieval projection")
+                    .description("NexusMind dense and BM25 retrieval projection")
                     .collectionSchema(schema)
                     .consistencyLevel(ConsistencyLevel.STRONG)
                     .build());
@@ -244,6 +320,42 @@ public class MilvusDenseVectorIndex implements DenseVectorIndex {
             throw schemaMismatch(collectionName,
                     "embedding dimension %s does not match expected %d"
                             .formatted(embedding.getDimension(), expectedDimension));
+        }
+        CreateCollectionReq.FieldSchema content = schema.getField(CONTENT);
+        if (content == null || content.getDataType() != DataType.VarChar) {
+            throw schemaMismatch(collectionName, "content must be a VarChar field");
+        }
+        if (!Boolean.TRUE.equals(content.getEnableAnalyzer())) {
+            throw schemaMismatch(collectionName, "content analyzer is not enabled");
+        }
+        Object analyzer = content.getAnalyzerParams() == null
+                ? null
+                : content.getAnalyzerParams().get("type");
+        if (!properties.bm25().analyzer().equals(analyzer)) {
+            throw schemaMismatch(collectionName,
+                    "content analyzer %s does not match expected %s"
+                            .formatted(analyzer, properties.bm25().analyzer()));
+        }
+        if (Boolean.TRUE.equals(content.getEnableMatch())) {
+            throw schemaMismatch(collectionName, "content text match must remain disabled");
+        }
+        CreateCollectionReq.FieldSchema sparse = schema.getField(SPARSE_EMBEDDING);
+        if (sparse == null || sparse.getDataType() != DataType.SparseFloatVector) {
+            throw schemaMismatch(collectionName,
+                    "sparse_embedding must be a SparseFloatVector field");
+        }
+        CreateCollectionReq.Function bm25Function = schema.getFunctionList() == null
+                ? null
+                : schema.getFunctionList().stream()
+                .filter(function -> BM25_FUNCTION.equals(function.getName()))
+                .findFirst()
+                .orElse(null);
+        if (bm25Function == null
+                || bm25Function.getFunctionType() != FunctionType.BM25
+                || !List.of(CONTENT).equals(bm25Function.getInputFieldNames())
+                || !List.of(SPARSE_EMBEDDING).equals(bm25Function.getOutputFieldNames())) {
+            throw schemaMismatch(collectionName,
+                    "content_bm25 function must map content to sparse_embedding using BM25");
         }
         if (!CHUNK_ID.equals(description.getPrimaryFieldName())) {
             throw schemaMismatch(collectionName, "primary field is not chunk_id");
@@ -299,6 +411,64 @@ public class MilvusDenseVectorIndex implements DenseVectorIndex {
                 || index.getIndexType() != IndexParam.IndexType.HNSW
                 || index.getMetricType() != IndexParam.MetricType.COSINE) {
             throw schemaMismatch(collectionName, "embedding index must be HNSW with COSINE metric");
+        }
+    }
+
+    private void ensureBm25Index(String collectionName) {
+        List<String> indexes = client.listIndexes(io.milvus.v2.service.index.request.ListIndexesReq.builder()
+                .collectionName(collectionName)
+                .fieldName(SPARSE_EMBEDDING)
+                .build());
+        if (indexes.isEmpty()) {
+            IndexParam index = IndexParam.builder()
+                    .fieldName(SPARSE_EMBEDDING)
+                    .indexName(SPARSE_INDEX)
+                    .indexType(IndexParam.IndexType.SPARSE_INVERTED_INDEX)
+                    .metricType(IndexParam.MetricType.BM25)
+                    .extraParams(Map.of(
+                            "inverted_index_algo", properties.bm25().invertedIndexAlgo(),
+                            "bm25_k1", properties.bm25().k1(),
+                            "bm25_b", properties.bm25().b()))
+                    .build();
+            try {
+                client.createIndex(CreateIndexReq.builder()
+                        .collectionName(collectionName)
+                        .indexParams(List.of(index))
+                        .sync(true)
+                        .timeout(properties.readyTimeout().toMillis())
+                        .build());
+            } catch (RuntimeException createFailure) {
+                List<String> concurrentIndexes = client.listIndexes(
+                        io.milvus.v2.service.index.request.ListIndexesReq.builder()
+                                .collectionName(collectionName)
+                                .fieldName(SPARSE_EMBEDDING)
+                                .build());
+                if (concurrentIndexes.isEmpty()) {
+                    throw createFailure;
+                }
+            }
+        }
+        validateBm25Index(collectionName);
+    }
+
+    private void validateBm25Index(String collectionName) {
+        DescribeIndexResp response = client.describeIndex(DescribeIndexReq.builder()
+                .collectionName(collectionName)
+                .fieldName(SPARSE_EMBEDDING)
+                .build());
+        DescribeIndexResp.IndexDesc index = response.getIndexDescByFieldName(SPARSE_EMBEDDING);
+        if (index == null
+                || index.getIndexType() != IndexParam.IndexType.SPARSE_INVERTED_INDEX
+                || index.getMetricType() != IndexParam.MetricType.BM25) {
+            throw schemaMismatch(collectionName,
+                    "sparse_embedding index must be SPARSE_INVERTED_INDEX with BM25 metric");
+        }
+        Map<String, String> parameters = index.getExtraParams();
+        if (parameters == null
+                || !properties.bm25().invertedIndexAlgo().equals(parameters.get("inverted_index_algo"))
+                || !Double.toString(properties.bm25().k1()).equals(parameters.get("bm25_k1"))
+                || !Double.toString(properties.bm25().b()).equals(parameters.get("bm25_b"))) {
+            throw schemaMismatch(collectionName, "BM25 index parameters do not match the configured baseline");
         }
     }
 
@@ -369,6 +539,18 @@ public class MilvusDenseVectorIndex implements DenseVectorIndex {
         );
     }
 
+    private Bm25SparseHit toBm25Hit(SearchResp.SearchResult result) {
+        Map<String, Object> entity = result.getEntity();
+        return new Bm25SparseHit(
+                number(result.getId() != null ? result.getId() : entity.get(CHUNK_ID), CHUNK_ID).longValue(),
+                number(entity.get(DOCUMENT_ID), DOCUMENT_ID).longValue(),
+                number(entity.get(CHUNK_INDEX), CHUNK_INDEX).intValue(),
+                result.getScore(),
+                Objects.toString(entity.get(CONTENT), ""),
+                nullableNumber(entity.get(PAGE_NO)),
+                entity.get(SECTION_TITLE) == null ? null : entity.get(SECTION_TITLE).toString());
+    }
+
     private static Number number(Object value, String field) {
         if (value instanceof Number number) {
             return number;
@@ -430,7 +612,7 @@ public class MilvusDenseVectorIndex implements DenseVectorIndex {
     }
 
     private static VectorIndexException schemaMismatch(String collectionName, String detail) {
-        return new VectorIndexException("Milvus collection schema mismatch for %s: %s"
+        return new VectorIndexException("Collection schema upgrade required for %s: %s"
                 .formatted(collectionName, detail));
     }
 }

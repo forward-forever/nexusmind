@@ -2,5 +2,6 @@ package com.wude.nexusmind.rag.retrieval;
 
 public enum RetrieverType {
 
-    DENSE
+    DENSE,
+    BM25
 }

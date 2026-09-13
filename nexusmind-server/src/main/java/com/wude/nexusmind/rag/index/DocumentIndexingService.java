@@ -22,6 +22,7 @@ import java.util.List;
 
 @Service
 @ConditionalOnProperty(name = "nexusmind.vector.enabled", havingValue = "true")
+@ConditionalOnProperty(name = "spring.ai.model.embedding", havingValue = "openai")
 public class DocumentIndexingService {
 
     private static final Logger log = LoggerFactory.getLogger(DocumentIndexingService.class);
@@ -67,7 +68,7 @@ public class DocumentIndexingService {
                 throw new VectorIndexException("READY document has no chunks to index: " + documentId);
             }
 
-            boolean collectionReady = false;
+            vectorIndex.ensureCollectionReady(collectionName, knowledgeBase.getEmbeddingDimension());
             int batchNumber = 0;
             for (List<KnowledgeChunk> batch : batchPlanner.plan(chunks)) {
                 batchNumber++;
@@ -75,11 +76,6 @@ public class DocumentIndexingService {
                         batch.stream().map(KnowledgeChunk::getContent).toList(),
                         knowledgeBase.getEmbeddingDimension(),
                         batchNumber);
-
-                if (!collectionReady) {
-                    vectorIndex.ensureCollectionReady(collectionName, knowledgeBase.getEmbeddingDimension());
-                    collectionReady = true;
-                }
 
                 List<VectorIndexEntity> entities = new ArrayList<>(batch.size());
                 for (int index = 0; index < batch.size(); index++) {

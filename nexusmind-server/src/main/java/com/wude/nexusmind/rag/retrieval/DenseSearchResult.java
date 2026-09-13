@@ -7,6 +7,7 @@ public record DenseSearchResult(
         long knowledgeBaseId,
         String model,
         int dimension,
+        RetrieverType retrieverType,
         String metric,
         int topK,
         List<RetrievalHit> results
@@ -21,6 +22,7 @@ public record DenseSearchResult(
                 result.knowledgeBaseId(),
                 result.model(),
                 result.dimension(),
+                result.retrieverType(),
                 result.scoreType().name(),
                 result.topK(),
                 result.hits());

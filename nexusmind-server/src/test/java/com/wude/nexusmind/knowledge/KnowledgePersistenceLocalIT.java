@@ -193,6 +193,12 @@ class KnowledgePersistenceLocalIT {
             assertThat(indexed.getIndexedAt()).isNotNull();
             assertThatThrownBy(() -> documentIndexStateService.markIndexing(persistedDocumentId))
                     .isInstanceOf(InvalidDocumentIndexStateException.class);
+
+            assertThat(documentIndexStateService.resetReadyDocumentsForRebuild(knowledgeBaseId)).isEqualTo(1);
+            KnowledgeDocument reset = documentMapper.findById(documentId).orElseThrow();
+            assertThat(reset.getIndexStatus()).isEqualTo(DocumentIndexStatus.NOT_INDEXED);
+            assertThat(reset.getIndexErrorMessage()).isNull();
+            assertThat(reset.getIndexedAt()).isNull();
         } finally {
             if (documentId != null) {
                 jdbcTemplate.update("DELETE FROM knowledge_chunk WHERE document_id = ?", documentId);

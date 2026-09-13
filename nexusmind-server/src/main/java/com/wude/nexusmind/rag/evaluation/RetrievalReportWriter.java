@@ -47,8 +47,12 @@ public class RetrievalReportWriter {
                 .append("- Dataset: ").append(metadata.datasetName()).append('\n')
                 .append("- Queries: ").append(metadata.datasetQueryCount()).append('\n')
                 .append("- Retriever: ").append(metadata.retrieverType()).append('\n')
-                .append("- Embedding: ").append(metadata.embeddingModel()).append('\n')
-                .append("- Dimension: ").append(metadata.embeddingDimension()).append('\n')
+                .append("- Query embedding: ")
+                .append(metadata.embeddingModel() == null ? "Not used" : metadata.embeddingModel())
+                .append('\n')
+                .append("- Query embedding dimension: ")
+                .append(metadata.embeddingModel() == null ? "Not applicable" : metadata.embeddingDimension())
+                .append('\n')
                 .append("- Chunking: ").append(metadata.chunkSizeChars()).append(" chars, overlap ")
                 .append(metadata.chunkOverlapChars()).append(" chars\n")
                 .append("- Metric: ").append(metadata.metric()).append("\n\n")
@@ -115,6 +119,9 @@ public class RetrievalReportWriter {
     }
 
     private static String retrieverTitle(String value) {
+        if ("BM25".equals(value)) {
+            return value;
+        }
         String lowerCase = value.toLowerCase(Locale.ROOT).replace('_', ' ');
         return Character.toUpperCase(lowerCase.charAt(0)) + lowerCase.substring(1);
     }

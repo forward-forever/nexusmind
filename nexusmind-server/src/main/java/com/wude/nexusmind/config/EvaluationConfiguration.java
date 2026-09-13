@@ -10,7 +10,7 @@ import com.wude.nexusmind.rag.evaluation.RetrievalEvaluationCli;
 import com.wude.nexusmind.rag.evaluation.RetrievalEvaluationService;
 import com.wude.nexusmind.rag.evaluation.RetrievalMetricsCalculator;
 import com.wude.nexusmind.rag.evaluation.RetrievalReportWriter;
-import com.wude.nexusmind.rag.retrieval.RetrievalService;
+import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
@@ -43,12 +43,12 @@ public class EvaluationConfiguration {
 
     @Bean
     RetrievalEvaluationService retrievalEvaluationService(
-            RetrievalService retrievalService,
+            RetrievalServiceRegistry retrievalServiceRegistry,
             RetrievalDatasetValidator datasetValidator,
             RetrievalMetricsCalculator metricsCalculator,
             ChunkingProperties chunkingProperties) {
         return new RetrievalEvaluationService(
-                retrievalService,
+                retrievalServiceRegistry,
                 datasetValidator,
                 metricsCalculator,
                 chunkingProperties,

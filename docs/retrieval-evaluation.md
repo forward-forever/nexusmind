@@ -10,7 +10,7 @@ RetrievalService.retrieve(..., topK=10)
 Retrieved Chunk Ranking
 ```
 
-它不调用 ChatModel，不评估 Context、答案或 Citation，也不实现 BM25、Hybrid、RRF、Rerank、Query Rewrite 或 Multi Query。当前报告的 Retriever Identity 为 `DENSE`。
+它不调用 ChatModel，不评估 Context、答案或 Citation，也不实现 Hybrid、RRF、Rerank、Query Rewrite 或 Multi Query。Checkpoint 8 起，同一评测引擎可通过 Registry 选择 `DENSE` 或 `BM25`，两者必须使用同一份 Golden Dataset。
 
 ## Golden Dataset
 
@@ -57,13 +57,13 @@ Dataset 是 UTF-8 JSONL，每行格式如下：
 
 本轮没有 graded relevance，因此不计算 NDCG。
 
-Latency 覆盖整个 `RetrievalService.retrieve()`，包括 Query Embedding、Milvus Search、MySQL visibility validation，输出 average、nearest-rank p50、p95 和 max。它只是当前本地开发环境 baseline，不是 production benchmark。
+Latency 覆盖整个 `RetrievalService.retrieve()`：Dense 包括 Query Embedding、Milvus Search 和 MySQL visibility validation；BM25 包括 Milvus raw-text BM25 Search 和相同的 MySQL visibility validation。输出 average、nearest-rank p50、p95 和 max。它只是当前本地开发环境 baseline，不是 production benchmark。
 
 报告还按实际存在的 Query Category 输出 `queryCount`、`HitRate@5` 和 `MRR@5`，并单列 Top5 miss 或第一个 relevant 只出现在 rank 6～10 的 failure cases。
 
 ## CLI
 
-真实 Dense Evaluation 需要已启动的 MySQL、Milvus，以及本地环境中的 `DASHSCOPE_API_KEY`、`EMBEDDING_BASE_URL`。它只对每条 Query 调用一次 Embedding，不调用 qwen3.5-flash、不重建向量、不重新 Index。
+真实 Dense Evaluation 需要已启动的 MySQL、Milvus，以及本地环境中的 `DASHSCOPE_API_KEY`、`EMBEDDING_BASE_URL`。它只对每条 Query 调用一次 Embedding，不调用 qwen3.5-flash、不重建向量、不重新 Index。BM25 Evaluation 不调用外部 Embedding API，可以显式关闭 Spring AI Embedding Model。
 
 ```bash
 cd /Users/wude/IdeaProjects/nexusmind/deploy
@@ -76,7 +76,15 @@ set +a
 
 ./mvnw spring-boot:run \
   -Dspring-boot.run.profiles=local \
-  -Dspring-boot.run.arguments="--spring.main.web-application-type=none --spring.ai.model.chat=none --nexusmind.rag.enabled=false --nexusmind.evaluation.enabled=true --dataset=/absolute/path/to/local-golden.jsonl --output=/Users/wude/IdeaProjects/nexusmind/evaluation/reports"
+  -Dspring-boot.run.arguments="--spring.main.web-application-type=none --spring.ai.model.chat=none --nexusmind.rag.enabled=false --nexusmind.evaluation.enabled=true --retriever=DENSE --dataset=/absolute/path/to/local-golden.jsonl --output=/Users/wude/IdeaProjects/nexusmind/evaluation/reports"
+```
+
+BM25 使用同一 Dataset：
+
+```bash
+./mvnw spring-boot:run \
+  -Dspring-boot.run.profiles=local \
+  -Dspring-boot.run.arguments="--spring.main.web-application-type=none --spring.ai.model.chat=none --spring.ai.model.embedding=none --nexusmind.rag.enabled=false --nexusmind.evaluation.enabled=true --retriever=BM25 --dataset=/absolute/path/to/local-golden.jsonl --output=/Users/wude/IdeaProjects/nexusmind/evaluation/reports"
 ```
 
 `RetrievalEvaluationCli` 复用真实 Spring Context 和 `RetrievalEvaluationService`，完成后关闭 Context 并退出，不启动 Web Server，也不暴露 Evaluation REST API。
@@ -88,6 +96,8 @@ set +a
 ```text
 dense-20260910-173000-000.json
 dense-20260910-173000-000.md
+bm25-20260910-173100-000.json
+bm25-20260910-173100-000.md
 ```
 
 JSON 保存 baseline metadata、全部 case ranking、指标、latency、category breakdown 和 failure cases。Markdown 提供指标表、latency 表、分类汇总和逐条失败分析。两种报告都只记录问题、Chunk ID、rank、score/scoreType 与 latency，不写入 Chunk content 或文档正文。

@@ -12,6 +12,7 @@ import com.wude.nexusmind.rag.retrieval.RetrievalHit;
 import com.wude.nexusmind.rag.retrieval.RetrievalResult;
 import com.wude.nexusmind.rag.retrieval.RetrievalScoreType;
 import com.wude.nexusmind.rag.retrieval.RetrievalService;
+import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
 import com.wude.nexusmind.rag.retrieval.RetrieverType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -57,25 +58,33 @@ class RetrievalEvaluationPipelineLocalIT {
                 knowledgeBases, chunks, documents);
 
         AtomicInteger retrievalCalls = new AtomicInteger();
-        RetrievalService retrievalService = (knowledgeBaseId, query, topK) -> {
-            retrievalCalls.incrementAndGet();
-            List<RetrievalHit> hits = query.startsWith("exact")
-                    ? List.of(hit(101L, 1.0f))
-                    : rankEightHits();
-            return new RetrievalResult(
-                    query, knowledgeBaseId, "deterministic-embedding", 4,
-                    RetrieverType.DENSE, RetrievalScoreType.COSINE, topK, hits);
+        RetrievalService retrievalService = new RetrievalService() {
+            @Override
+            public RetrieverType type() {
+                return RetrieverType.DENSE;
+            }
+
+            @Override
+            public RetrievalResult retrieve(long knowledgeBaseId, String query, int topK) {
+                retrievalCalls.incrementAndGet();
+                List<RetrievalHit> hits = query.startsWith("exact")
+                        ? List.of(hit(101L, 1.0f))
+                        : rankEightHits();
+                return new RetrievalResult(
+                        query, knowledgeBaseId, "deterministic-embedding", 4,
+                        RetrieverType.DENSE, RetrievalScoreType.COSINE, topK, hits);
+            }
         };
         AtomicLong nanoTime = new AtomicLong();
         RetrievalEvaluationService service = new RetrievalEvaluationService(
-                retrievalService,
+                new RetrievalServiceRegistry(List.of(retrievalService)),
                 validator,
                 new RetrievalMetricsCalculator(),
                 new ChunkingProperties(500, 100),
                 Clock.fixed(Instant.parse("2026-09-10T09:30:00Z"), ZoneOffset.UTC),
                 () -> nanoTime.getAndAdd(10_000_000));
 
-        RetrievalEvaluationReport report = service.evaluate(dataset);
+        RetrievalEvaluationReport report = service.evaluate(dataset, RetrieverType.DENSE);
         RetrievalReportFiles files = new RetrievalReportWriter(objectMapper)
                 .write(report, temporaryDirectory.resolve("reports"));
 

@@ -1,6 +1,6 @@
 package com.wude.nexusmind.rag.milvus;
 
-public record DenseVectorHit(
+public record Bm25SparseHit(
         long chunkId,
         long documentId,
         int chunkIndex,

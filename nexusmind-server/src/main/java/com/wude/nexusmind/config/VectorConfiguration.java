@@ -3,9 +3,12 @@ package com.wude.nexusmind.config;
 import com.wude.nexusmind.model.config.EmbeddingProperties;
 import com.wude.nexusmind.rag.embedding.EmbeddingBatchService;
 import com.wude.nexusmind.rag.index.EmbeddingBatchPlanner;
-import com.wude.nexusmind.rag.milvus.DenseVectorIndex;
 import com.wude.nexusmind.rag.milvus.MilvusDenseVectorIndex;
 import com.wude.nexusmind.rag.milvus.MilvusProperties;
+import com.wude.nexusmind.knowledge.service.DocumentService;
+import com.wude.nexusmind.rag.retrieval.RetrievalService;
+import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
+import com.wude.nexusmind.rag.retrieval.RetrievalVisibilityFilter;
 import io.milvus.v2.client.ConnectConfig;
 import io.milvus.v2.client.MilvusClientV2;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -20,6 +23,7 @@ public class VectorConfiguration {
 
     @Bean
     @ConditionalOnProperty(name = "nexusmind.vector.enabled", havingValue = "true")
+    @ConditionalOnProperty(name = "spring.ai.model.embedding", havingValue = "openai")
     EmbeddingBatchService embeddingBatchService(EmbeddingModel embeddingModel,
                                                 EmbeddingProperties embeddingProperties) {
         return new EmbeddingBatchService(embeddingModel, embeddingProperties);
@@ -43,7 +47,19 @@ public class VectorConfiguration {
 
     @Bean
     @ConditionalOnProperty(name = "nexusmind.milvus.enabled", havingValue = "true")
-    DenseVectorIndex denseVectorIndex(MilvusClientV2 client, MilvusProperties properties) {
+    MilvusDenseVectorIndex milvusRetrievalIndex(MilvusClientV2 client, MilvusProperties properties) {
         return new MilvusDenseVectorIndex(client, properties);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "nexusmind.vector.enabled", havingValue = "true")
+    RetrievalVisibilityFilter retrievalVisibilityFilter(DocumentService documentService) {
+        return new RetrievalVisibilityFilter(documentService);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "nexusmind.vector.enabled", havingValue = "true")
+    RetrievalServiceRegistry retrievalServiceRegistry(java.util.List<RetrievalService> services) {
+        return new RetrievalServiceRegistry(services);
     }
 }
