@@ -36,6 +36,8 @@ info:
     description: NexusMind AI Knowledge & Agent Platform
 
 nexusmind:
+  evaluation:
+    enabled: false
   vector:
     enabled: false
   ai:

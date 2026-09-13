@@ -49,3 +49,7 @@ logs/
 # Claude
 .claude/settings.local.json
 
+# Local retrieval evaluation data and generated reports
+evaluation/datasets/local-*.jsonl
+evaluation/reports/*
+!evaluation/reports/.gitkeep

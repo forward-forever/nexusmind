@@ -86,6 +86,7 @@ public class DenseRetrievalService implements RetrievalService {
                 knowledgeBaseId,
                 embeddingService.model(),
                 embeddingService.dimension(),
+                RetrieverType.DENSE,
                 RetrievalScoreType.COSINE,
                 topK,
                 visibleHits);

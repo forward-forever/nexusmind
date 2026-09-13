@@ -9,6 +9,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
@@ -44,6 +45,13 @@ public class ChunkService {
     public List<KnowledgeChunk> listByDocument(long documentId) {
         findDocument(documentId);
         return List.copyOf(chunkMapper.findByDocumentId(documentId));
+    }
+
+    public List<KnowledgeChunk> findByIds(Collection<Long> chunkIds) {
+        if (chunkIds == null || chunkIds.isEmpty()) {
+            return List.of();
+        }
+        return List.copyOf(chunkMapper.findByIds(chunkIds));
     }
 
     @Transactional

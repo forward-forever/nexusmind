@@ -9,6 +9,7 @@ import com.wude.nexusmind.rag.retrieval.RetrievalHit;
 import com.wude.nexusmind.rag.retrieval.RetrievalResult;
 import com.wude.nexusmind.rag.retrieval.RetrievalScoreType;
 import com.wude.nexusmind.rag.retrieval.RetrievalService;
+import com.wude.nexusmind.rag.retrieval.RetrieverType;
 import org.junit.jupiter.api.Test;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
@@ -83,7 +84,8 @@ class RagChatServiceTest {
         ChatAnswerStreamer streamer = mock(ChatAnswerStreamer.class);
         when(retrieval.retrieve(7L, "unknown", 5)).thenReturn(
                 new RetrievalResult(
-                        "unknown", 7L, "embedding", 4, RetrievalScoreType.COSINE, 5, List.of()));
+                        "unknown", 7L, "embedding", 4, RetrieverType.DENSE,
+                        RetrievalScoreType.COSINE, 5, List.of()));
         when(contextBuilder.build(List.of())).thenReturn(new RagContext("", List.of(), 0));
 
         List<RagStreamEvent> events = service(retrieval, contextBuilder, streamer)
@@ -138,7 +140,8 @@ class RagChatServiceTest {
         when(retrieval.retrieve(org.mockito.ArgumentMatchers.eq(7L),
                 org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt()))
                 .thenReturn(new RetrievalResult(
-                        "question", 7L, "embedding", 4, RetrievalScoreType.COSINE, 5, List.of(hit)));
+                        "question", 7L, "embedding", 4, RetrieverType.DENSE,
+                        RetrievalScoreType.COSINE, 5, List.of(hit)));
         when(contextBuilder.build(List.of(hit))).thenReturn(context);
         when(streamer.stream(org.mockito.ArgumentMatchers.any())).thenReturn(modelFlux);
         return new Fixture(service(retrieval, contextBuilder, streamer, streamTimeout), retrieval);

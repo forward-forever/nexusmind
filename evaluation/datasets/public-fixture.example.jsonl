@@ -1,0 +1,2 @@
+{"id":"q001","knowledgeBaseId":100,"question":"示例系统如何处理并发写入？","relevantChunkIds":[100001,100002],"category":"EXACT","note":"虚构格式示例，运行前必须替换为人工确认的真实 ID"}
+{"id":"q002","knowledgeBaseId":100,"question":"两个操作为什么会互相等待？","relevantChunkIds":[100001],"category":"SEMANTIC","note":"虚构同义改写示例"}

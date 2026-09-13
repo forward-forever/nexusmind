@@ -122,6 +122,9 @@ class KnowledgePersistenceLocalIT {
             );
             assertThat(chunkMapper.batchInsert(initialChunks)).isEqualTo(2);
             assertThat(initialChunks).allSatisfy(chunk -> assertThat(chunk.getId()).isNotNull());
+            assertThat(chunkMapper.findByIds(initialChunks.stream().map(KnowledgeChunk::getId).toList()))
+                    .extracting(KnowledgeChunk::getId)
+                    .containsExactlyElementsOf(initialChunks.stream().map(KnowledgeChunk::getId).toList());
             assertThat(chunkMapper.findByDocumentId(documentId))
                     .extracting(KnowledgeChunk::getChunkIndex)
                     .containsExactly(0, 1);

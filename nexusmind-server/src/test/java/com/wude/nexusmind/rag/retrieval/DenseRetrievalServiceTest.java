@@ -55,6 +55,7 @@ class DenseRetrievalServiceTest {
         RetrievalResult result = service(knowledgeBases, documents, model, index)
                 .retrieve(7L, "InnoDB deadlock", 5);
 
+        assertThat(result.retrieverType()).isEqualTo(RetrieverType.DENSE);
         assertThat(result.scoreType()).isEqualTo(RetrievalScoreType.COSINE);
         assertThat(result.hits()).extracting(RetrievalHit::chunkId).containsExactly(104L, 106L);
         assertThat(result.hits()).extracting(RetrievalHit::score).containsExactly(0.82f, 0.75f);

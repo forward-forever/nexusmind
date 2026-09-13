@@ -7,6 +7,7 @@ public record RetrievalResult(
         long knowledgeBaseId,
         String model,
         int dimension,
+        RetrieverType retrieverType,
         RetrievalScoreType scoreType,
         int topK,
         List<RetrievalHit> hits) {
