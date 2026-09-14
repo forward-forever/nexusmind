@@ -10,7 +10,7 @@ public record RagSourceResponse(
         String fileName,
         Integer pageNo,
         String sectionTitle,
-        float score,
+        double score,
         RetrievalScoreType scoreType
 ) {
 

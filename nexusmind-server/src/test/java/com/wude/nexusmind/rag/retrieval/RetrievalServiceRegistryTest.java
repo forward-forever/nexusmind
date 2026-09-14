@@ -12,15 +12,18 @@ import static org.mockito.Mockito.when;
 class RetrievalServiceRegistryTest {
 
     @Test
-    void selectsDenseAndBm25WithoutFallback() {
+    void selectsDenseBm25AndHybridWithoutFallback() {
         RetrievalService dense = mock(RetrievalService.class);
         RetrievalService bm25 = mock(RetrievalService.class);
+        RetrievalService hybrid = mock(RetrievalService.class);
         when(dense.type()).thenReturn(RetrieverType.DENSE);
         when(bm25.type()).thenReturn(RetrieverType.BM25);
-        RetrievalServiceRegistry registry = new RetrievalServiceRegistry(List.of(dense, bm25));
+        when(hybrid.type()).thenReturn(RetrieverType.HYBRID_RRF);
+        RetrievalServiceRegistry registry = new RetrievalServiceRegistry(List.of(dense, bm25, hybrid));
 
         assertThat(registry.get(RetrieverType.DENSE)).isSameAs(dense);
         assertThat(registry.get(RetrieverType.BM25)).isSameAs(bm25);
+        assertThat(registry.get(RetrieverType.HYBRID_RRF)).isSameAs(hybrid);
         assertThatThrownBy(() -> registry.get(null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("required");

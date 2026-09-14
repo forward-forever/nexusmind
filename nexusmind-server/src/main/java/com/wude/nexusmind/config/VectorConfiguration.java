@@ -9,6 +9,12 @@ import com.wude.nexusmind.knowledge.service.DocumentService;
 import com.wude.nexusmind.rag.retrieval.RetrievalService;
 import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
 import com.wude.nexusmind.rag.retrieval.RetrievalVisibilityFilter;
+import com.wude.nexusmind.rag.retrieval.Bm25RetrievalService;
+import com.wude.nexusmind.rag.retrieval.DenseRetrievalService;
+import com.wude.nexusmind.rag.retrieval.HybridRetrievalProperties;
+import com.wude.nexusmind.rag.retrieval.HybridRouteCandidatePlanner;
+import com.wude.nexusmind.rag.retrieval.HybridRrfRetrievalService;
+import com.wude.nexusmind.rag.retrieval.ReciprocalRankFusion;
 import io.milvus.v2.client.ConnectConfig;
 import io.milvus.v2.client.MilvusClientV2;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -55,6 +61,31 @@ public class VectorConfiguration {
     @ConditionalOnProperty(name = "nexusmind.vector.enabled", havingValue = "true")
     RetrievalVisibilityFilter retrievalVisibilityFilter(DocumentService documentService) {
         return new RetrievalVisibilityFilter(documentService);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "nexusmind.vector.enabled", havingValue = "true")
+    HybridRouteCandidatePlanner hybridRouteCandidatePlanner(HybridRetrievalProperties properties) {
+        return new HybridRouteCandidatePlanner(properties);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "nexusmind.vector.enabled", havingValue = "true")
+    ReciprocalRankFusion reciprocalRankFusion() {
+        return new ReciprocalRankFusion();
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "nexusmind.vector.enabled", havingValue = "true")
+    @ConditionalOnProperty(name = "spring.ai.model.embedding", havingValue = "openai")
+    HybridRrfRetrievalService hybridRrfRetrievalService(
+            DenseRetrievalService denseRetrievalService,
+            Bm25RetrievalService bm25RetrievalService,
+            HybridRouteCandidatePlanner candidatePlanner,
+            ReciprocalRankFusion fusion,
+            HybridRetrievalProperties properties) {
+        return new HybridRrfRetrievalService(
+                denseRetrievalService, bm25RetrievalService, candidatePlanner, fusion, properties);
     }
 
     @Bean

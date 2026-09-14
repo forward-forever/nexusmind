@@ -58,7 +58,8 @@ class DenseRetrievalServiceTest {
         assertThat(result.retrieverType()).isEqualTo(RetrieverType.DENSE);
         assertThat(result.scoreType()).isEqualTo(RetrievalScoreType.COSINE);
         assertThat(result.hits()).extracting(RetrievalHit::chunkId).containsExactly(104L, 106L);
-        assertThat(result.hits()).extracting(RetrievalHit::score).containsExactly(0.82f, 0.75f);
+        assertThat(result.hits()).extracting(RetrievalHit::score)
+                .containsExactly((double) 0.82f, (double) 0.75f);
         assertThat(result.hits()).extracting(RetrievalHit::fileName)
                 .containsExactly("document-13.pdf", "document-15.pdf");
         assertThat(result.hits()).allMatch(hit -> hit.scoreType() == RetrievalScoreType.COSINE);

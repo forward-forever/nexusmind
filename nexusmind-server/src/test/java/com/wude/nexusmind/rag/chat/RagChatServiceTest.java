@@ -30,11 +30,13 @@ import static org.mockito.Mockito.when;
 class RagChatServiceTest {
 
     @Test
-    void keepsDenseAsProductRetrieverWhenRegistryAlsoContainsBm25() {
+    void keepsDenseAsProductRetrieverWhenRegistryAlsoContainsBm25AndHybrid() {
         RetrievalService dense = mock(RetrievalService.class);
         RetrievalService bm25 = mock(RetrievalService.class);
+        RetrievalService hybrid = mock(RetrievalService.class);
         when(dense.type()).thenReturn(RetrieverType.DENSE);
         when(bm25.type()).thenReturn(RetrieverType.BM25);
+        when(hybrid.type()).thenReturn(RetrieverType.HYBRID_RRF);
         when(dense.retrieve(7L, "question", 5)).thenReturn(new RetrievalResult(
                 "question", 7L, "embedding", 4, RetrieverType.DENSE,
                 RetrievalScoreType.COSINE, 5, List.of()));
@@ -42,7 +44,7 @@ class RagChatServiceTest {
         when(contextBuilder.build(List.of())).thenReturn(new RagContext("", List.of(), 0));
         ChatAnswerStreamer streamer = mock(ChatAnswerStreamer.class);
         RagChatService service = new RagChatService(
-                new RetrievalServiceRegistry(List.of(dense, bm25)),
+                new RetrievalServiceRegistry(List.of(dense, bm25, hybrid)),
                 new RagRetrievalProperties(RetrieverType.DENSE),
                 contextBuilder,
                 new RagPromptFactory(),
@@ -53,6 +55,10 @@ class RagChatServiceTest {
 
         verify(dense).retrieve(7L, "question", 5);
         verify(bm25, never()).retrieve(
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyInt());
+        verify(hybrid, never()).retrieve(
                 org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyInt());

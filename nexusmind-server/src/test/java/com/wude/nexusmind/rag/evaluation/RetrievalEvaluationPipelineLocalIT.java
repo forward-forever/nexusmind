@@ -14,6 +14,8 @@ import com.wude.nexusmind.rag.retrieval.RetrievalScoreType;
 import com.wude.nexusmind.rag.retrieval.RetrievalService;
 import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
 import com.wude.nexusmind.rag.retrieval.RetrieverType;
+import com.wude.nexusmind.rag.retrieval.HybridRetrievalProperties;
+import com.wude.nexusmind.rag.retrieval.RetrievalContribution;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.ObjectMapper;
@@ -81,6 +83,8 @@ class RetrievalEvaluationPipelineLocalIT {
                 validator,
                 new RetrievalMetricsCalculator(),
                 new ChunkingProperties(500, 100),
+                new HybridRetrievalProperties(
+                        new HybridRetrievalProperties.Rrf(60), 4, 20, 60),
                 Clock.fixed(Instant.parse("2026-09-10T09:30:00Z"), ZoneOffset.UTC),
                 () -> nanoTime.getAndAdd(10_000_000));
 
@@ -103,6 +107,63 @@ class RetrievalEvaluationPipelineLocalIT {
                 .doesNotContain("secret-content");
         assertThat(markdown)
                 .contains("# Dense Retrieval Baseline", "| HitRate |", "### Query q002", "First relevant rank: 8")
+                .doesNotContain("secret-content");
+    }
+
+    @Test
+    void writesHybridIdentityParametersAndContributionsToJsonAndMarkdown() throws IOException {
+        ObjectMapper objectMapper = new ObjectMapper();
+        RetrievalEvaluationDataset dataset = new RetrievalEvaluationDataset(
+                "same-golden",
+                List.of(new RetrievalEvaluationCase(
+                        "q001", 12L, "hybrid question", List.of(999L), QueryCategory.SEMANTIC, null)));
+        RetrievalService hybrid = new RetrievalService() {
+            @Override
+            public RetrieverType type() {
+                return RetrieverType.HYBRID_RRF;
+            }
+
+            @Override
+            public RetrievalResult retrieve(long knowledgeBaseId, String query, int topK) {
+                return new RetrievalResult(
+                        query, knowledgeBaseId, "deterministic-embedding", 4,
+                        RetrieverType.HYBRID_RRF, RetrievalScoreType.RRF, topK,
+                        List.of(new RetrievalHit(
+                                101L, 10L, "fixture.txt", 0, 2.0 / 61,
+                                RetrievalScoreType.RRF, "secret-content", null, null,
+                                List.of(
+                                        new RetrievalContribution(
+                                                RetrieverType.DENSE, 1, 0.82,
+                                                RetrievalScoreType.COSINE),
+                                        new RetrievalContribution(
+                                                RetrieverType.BM25, 1, 8.73,
+                                                RetrievalScoreType.BM25)))));
+            }
+        };
+        RetrievalEvaluationService service = new RetrievalEvaluationService(
+                new RetrievalServiceRegistry(List.of(hybrid)),
+                mock(RetrievalDatasetValidator.class),
+                new RetrievalMetricsCalculator(),
+                new ChunkingProperties(500, 100),
+                new HybridRetrievalProperties(
+                        new HybridRetrievalProperties.Rrf(60), 4, 20, 60),
+                Clock.fixed(Instant.parse("2026-09-13T09:30:00Z"), ZoneOffset.UTC),
+                new AtomicLong()::getAndIncrement);
+
+        RetrievalEvaluationReport report = service.evaluate(dataset, RetrieverType.HYBRID_RRF);
+        RetrievalReportFiles files = new RetrievalReportWriter(objectMapper)
+                .write(report, temporaryDirectory.resolve("hybrid-reports"));
+        String json = Files.readString(files.json());
+        String markdown = Files.readString(files.markdown());
+
+        assertThat(json)
+                .contains("\"retrieverType\" : \"HYBRID_RRF\"", "\"scoreType\" : \"RRF\"")
+                .contains("\"rrfK\" : 60", "\"routeCandidateMultiplier\" : 4")
+                .contains("\"retrieverType\" : \"DENSE\"", "\"retrieverType\" : \"BM25\"")
+                .doesNotContain("secret-content");
+        assertThat(markdown)
+                .contains("# Hybrid RRF Retrieval Baseline", "- RRF k: 60")
+                .contains("DENSE#1 COSINE=0.82", "BM25#1 BM25=8.73")
                 .doesNotContain("secret-content");
     }
 

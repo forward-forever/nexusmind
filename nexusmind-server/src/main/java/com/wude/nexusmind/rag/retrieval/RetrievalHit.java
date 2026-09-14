@@ -1,13 +1,33 @@
 package com.wude.nexusmind.rag.retrieval;
 
+import java.util.List;
+
 public record RetrievalHit(
         long chunkId,
         long documentId,
         String fileName,
         int chunkIndex,
-        float score,
+        double score,
         RetrievalScoreType scoreType,
         String content,
         Integer pageNo,
-        String sectionTitle) {
+        String sectionTitle,
+        List<RetrievalContribution> contributions) {
+
+    public RetrievalHit {
+        contributions = contributions == null ? List.of() : List.copyOf(contributions);
+    }
+
+    public RetrievalHit(long chunkId,
+                        long documentId,
+                        String fileName,
+                        int chunkIndex,
+                        double score,
+                        RetrievalScoreType scoreType,
+                        String content,
+                        Integer pageNo,
+                        String sectionTitle) {
+        this(chunkId, documentId, fileName, chunkIndex, score, scoreType,
+                content, pageNo, sectionTitle, List.of());
+    }
 }

@@ -10,7 +10,7 @@ RetrievalService.retrieve(..., topK=10)
 Retrieved Chunk Ranking
 ```
 
-它不调用 ChatModel，不评估 Context、答案或 Citation，也不实现 Hybrid、RRF、Rerank、Query Rewrite 或 Multi Query。Checkpoint 8 起，同一评测引擎可通过 Registry 选择 `DENSE` 或 `BM25`，两者必须使用同一份 Golden Dataset。
+它不调用 ChatModel，不评估 Context、答案或 Citation，也不实现 Rerank、Query Rewrite 或 Multi Query。Checkpoint 9 起，同一评测引擎可通过 Registry 选择 `DENSE`、`BM25` 或 `HYBRID_RRF`，三者必须使用同一份 Golden Dataset。
 
 ## Golden Dataset
 
@@ -57,7 +57,7 @@ Dataset 是 UTF-8 JSONL，每行格式如下：
 
 本轮没有 graded relevance，因此不计算 NDCG。
 
-Latency 覆盖整个 `RetrievalService.retrieve()`：Dense 包括 Query Embedding、Milvus Search 和 MySQL visibility validation；BM25 包括 Milvus raw-text BM25 Search 和相同的 MySQL visibility validation。输出 average、nearest-rank p50、p95 和 max。它只是当前本地开发环境 baseline，不是 production benchmark。
+Latency 覆盖整个 `RetrievalService.retrieve()`：Dense 包括 Query Embedding、Milvus Search 和 MySQL visibility validation；BM25 包括 Milvus raw-text BM25 Search 和相同的 MySQL visibility validation；Hybrid 当前顺序执行这两条已过滤路线，再执行应用层 RRF。输出 average、nearest-rank p50、p95 和 max。它只是当前本地开发环境 baseline，不是 production benchmark。
 
 报告还按实际存在的 Query Category 输出 `queryCount`、`HitRate@5` 和 `MRR@5`，并单列 Top5 miss 或第一个 relevant 只出现在 rank 6～10 的 failure cases。
 
@@ -87,6 +87,14 @@ BM25 使用同一 Dataset：
   -Dspring-boot.run.arguments="--spring.main.web-application-type=none --spring.ai.model.chat=none --spring.ai.model.embedding=none --nexusmind.rag.enabled=false --nexusmind.evaluation.enabled=true --retriever=BM25 --dataset=/absolute/path/to/local-golden.jsonl --output=/Users/wude/IdeaProjects/nexusmind/evaluation/reports"
 ```
 
+Hybrid 同样使用该 Dataset。它会运行一次 Dense route（即一次 Query Embedding）和一次不调用外部 Embedding 的 BM25 route：
+
+```bash
+./mvnw spring-boot:run \
+  -Dspring-boot.run.profiles=local \
+  -Dspring-boot.run.arguments="--spring.main.web-application-type=none --spring.ai.model.chat=none --nexusmind.rag.enabled=false --nexusmind.evaluation.enabled=true --retriever=HYBRID_RRF --dataset=/absolute/path/to/local-golden.jsonl --output=/Users/wude/IdeaProjects/nexusmind/evaluation/reports"
+```
+
 `RetrievalEvaluationCli` 复用真实 Spring Context 和 `RetrievalEvaluationService`，完成后关闭 Context 并退出，不启动 Web Server，也不暴露 Evaluation REST API。
 
 ## Reports
@@ -98,8 +106,10 @@ dense-20260910-173000-000.json
 dense-20260910-173000-000.md
 bm25-20260910-173100-000.json
 bm25-20260910-173100-000.md
+hybrid_rrf-20260910-173200-000.json
+hybrid_rrf-20260910-173200-000.md
 ```
 
-JSON 保存 baseline metadata、全部 case ranking、指标、latency、category breakdown 和 failure cases。Markdown 提供指标表、latency 表、分类汇总和逐条失败分析。两种报告都只记录问题、Chunk ID、rank、score/scoreType 与 latency，不写入 Chunk content 或文档正文。
+JSON 保存 baseline metadata、全部 case ranking、指标、latency、category breakdown 和 failure cases。Hybrid metadata 还记录 RRF k、两条 route 及 route candidate depth 参数；每个 Hybrid hit 保存 Dense/BM25 rank 与原始 score contribution。Markdown 提供指标表、latency 表、分类汇总和逐条失败分析。两种报告都只记录问题、Chunk ID、rank、score/scoreType、contribution 与 latency，不写入 Chunk content 或文档正文。
 
 `evaluation/reports/` 默认被 Git 忽略。用户确认有价值的正式 baseline summary 后，可人工整理到 `docs/evaluation/`。

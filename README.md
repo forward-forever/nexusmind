@@ -45,6 +45,6 @@ V1 的完整启动和人工验收步骤见 [`docs/v1-demo.md`](docs/v1-demo.md)�
 ## Roadmap
 
 - V1 - Basic RAG（Feature Complete）
-- V2 - Retrieval Quality（Dense/BM25 Baseline；Hybrid Planned）
+- V2 - Retrieval Quality（Dense / BM25 Baseline；Hybrid RRF Evaluation Ready；Rerank Planned）
 - V3 - Agent & Tool Calling（Planned）
 - V4 - Production Engineering（Planned）

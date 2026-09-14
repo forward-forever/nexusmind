@@ -59,6 +59,12 @@ nexusmind:
   rag:
     enabled: false
     retriever: DENSE
+    hybrid:
+      rrf:
+        k: 60
+      route-candidate-multiplier: 4
+      min-route-candidates: 20
+      max-route-candidates: 60
   milvus:
     enabled: false
     uri: ${MILVUS_URI:http://localhost:19530}

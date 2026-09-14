@@ -55,7 +55,7 @@ class Bm25RetrievalServiceTest {
         assertThat(result.model()).isNull();
         assertThat(result.dimension()).isZero();
         assertThat(result.hits()).extracting(RetrievalHit::chunkId).containsExactly(106L);
-        assertThat(result.hits()).extracting(RetrievalHit::score).containsExactly(4.5f);
+        assertThat(result.hits()).extracting(RetrievalHit::score).containsExactly(4.5);
         assertThat(result.hits()).allMatch(hit -> hit.scoreType() == RetrievalScoreType.BM25);
         verify(sparseIndex).search("kb_7", 7L, "InnoDB 死锁", 15, 1024);
         verify(documents).findByIds(List.of(10L, 11L, 12L, 99L, 14L, 15L, 16L));

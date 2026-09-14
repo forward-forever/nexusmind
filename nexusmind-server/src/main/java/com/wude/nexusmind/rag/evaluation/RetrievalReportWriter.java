@@ -55,7 +55,9 @@ public class RetrievalReportWriter {
                 .append('\n')
                 .append("- Chunking: ").append(metadata.chunkSizeChars()).append(" chars, overlap ")
                 .append(metadata.chunkOverlapChars()).append(" chars\n")
-                .append("- Metric: ").append(metadata.metric()).append("\n\n")
+                .append("- Score type: ").append(metadata.scoreType()).append('\n');
+        appendHybridMetadata(markdown, metadata.hybrid());
+        markdown.append('\n')
                 .append("## Ranking Metrics\n\n")
                 .append("| Metric | @1 | @3 | @5 | @10 |\n")
                 .append("|---|---:|---:|---:|---:|\n")
@@ -87,7 +89,7 @@ public class RetrievalReportWriter {
                         .append("- Expected: ").append(failure.relevantChunkIds()).append('\n')
                         .append("- Retrieved: ")
                         .append(failure.retrieved().stream()
-                                .map(hit -> hit.chunkId() + "@" + hit.rank())
+                                .map(RetrievalReportWriter::retrievedSummary)
                                 .toList())
                         .append('\n')
                         .append("- First relevant rank: ")
@@ -96,6 +98,36 @@ public class RetrievalReportWriter {
             }
         }
         return markdown.toString();
+    }
+
+    private static void appendHybridMetadata(StringBuilder markdown,
+                                             HybridEvaluationMetadata hybrid) {
+        if (hybrid == null) {
+            return;
+        }
+        markdown.append("- RRF k: ").append(hybrid.rrfK()).append('\n')
+                .append("- Routes: ").append(hybrid.routes()).append('\n')
+                .append("- Route candidates: multiplier=")
+                .append(hybrid.routeCandidateMultiplier())
+                .append(", min=").append(hybrid.minRouteCandidates())
+                .append(", max=").append(hybrid.maxRouteCandidates())
+                .append('\n');
+    }
+
+    private static String retrievedSummary(RetrievalEvaluationCaseResult.RetrievedChunk hit) {
+        if (hit.contributions().isEmpty()) {
+            return hit.chunkId() + "@" + hit.rank() + " " + hit.scoreType() + "=" + hit.score();
+        }
+        String contributions = hit.contributions().stream()
+                .map(contribution -> "%s#%d %s=%s".formatted(
+                        contribution.retrieverType(),
+                        contribution.rank(),
+                        contribution.rawScoreType(),
+                        contribution.rawScore()))
+                .toList()
+                .toString();
+        return hit.chunkId() + "@" + hit.rank() + " RRF=" + hit.score()
+                + " contributions=" + contributions;
     }
 
     private static String metricRow(String name,
@@ -121,6 +153,9 @@ public class RetrievalReportWriter {
     private static String retrieverTitle(String value) {
         if ("BM25".equals(value)) {
             return value;
+        }
+        if ("HYBRID_RRF".equals(value)) {
+            return "Hybrid RRF";
         }
         String lowerCase = value.toLowerCase(Locale.ROOT).replace('_', ' ');
         return Character.toUpperCase(lowerCase.charAt(0)) + lowerCase.substring(1);

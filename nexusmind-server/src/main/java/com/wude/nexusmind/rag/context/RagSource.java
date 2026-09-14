@@ -9,7 +9,7 @@ public record RagSource(
         String fileName,
         Integer pageNo,
         String sectionTitle,
-        float score,
+        double score,
         RetrievalScoreType scoreType,
         String content
 ) {

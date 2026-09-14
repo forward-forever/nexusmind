@@ -53,7 +53,8 @@ public class RetrievalEvaluationCli implements ApplicationRunner {
     private static RetrieverType requiredRetriever(ApplicationArguments arguments) {
         List<String> values = arguments.getOptionValues("retriever");
         if (values == null || values.size() != 1 || values.get(0).isBlank()) {
-            throw new IllegalArgumentException("Exactly one --retriever=DENSE|BM25 is required");
+            throw new IllegalArgumentException(
+                    "Exactly one --retriever=DENSE|BM25|HYBRID_RRF is required");
         }
         try {
             return RetrieverType.valueOf(values.get(0).trim().toUpperCase(java.util.Locale.ROOT));

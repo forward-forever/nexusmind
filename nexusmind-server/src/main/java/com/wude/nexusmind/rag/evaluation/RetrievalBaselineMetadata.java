@@ -13,5 +13,6 @@ public record RetrievalBaselineMetadata(
         int embeddingDimension,
         int chunkSizeChars,
         int chunkOverlapChars,
-        RetrievalScoreType metric) {
+        RetrievalScoreType scoreType,
+        HybridEvaluationMetadata hybrid) {
 }

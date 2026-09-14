@@ -19,7 +19,7 @@ import java.util.List;
 public class DenseRetrievalService implements RetrievalService {
 
     public static final int DEFAULT_TOP_K = 5;
-    public static final int MAXIMUM_TOP_K = 20;
+    public static final int MAXIMUM_TOP_K = RetrievalLimits.MAX_ROUTE_CANDIDATES;
 
     private final KnowledgeBaseService knowledgeBaseService;
     private final EmbeddingBatchService embeddingService;

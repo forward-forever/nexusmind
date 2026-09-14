@@ -49,6 +49,12 @@ nexusmind:
   rag:
     enabled: true
     retriever: ${NEXUSMIND_RAG_RETRIEVER:DENSE}
+    hybrid:
+      rrf:
+        k: 60
+      route-candidate-multiplier: 4
+      min-route-candidates: 20
+      max-route-candidates: 60
   ai:
     embedding:
       model: qwen3.7-text-embedding-flash

@@ -6,6 +6,7 @@ import com.wude.nexusmind.rag.retrieval.RetrievalResult;
 import com.wude.nexusmind.rag.retrieval.RetrievalService;
 import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
 import com.wude.nexusmind.rag.retrieval.RetrieverType;
+import com.wude.nexusmind.rag.retrieval.HybridRetrievalProperties;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -24,6 +25,7 @@ public class RetrievalEvaluationService {
     private final RetrievalDatasetValidator datasetValidator;
     private final RetrievalMetricsCalculator metricsCalculator;
     private final ChunkingProperties chunkingProperties;
+    private final HybridRetrievalProperties hybridProperties;
     private final Clock clock;
     private final LongSupplier nanoTime;
 
@@ -31,12 +33,14 @@ public class RetrievalEvaluationService {
                                       RetrievalDatasetValidator datasetValidator,
                                       RetrievalMetricsCalculator metricsCalculator,
                                       ChunkingProperties chunkingProperties,
+                                      HybridRetrievalProperties hybridProperties,
                                       Clock clock,
                                       LongSupplier nanoTime) {
         this.retrievalServiceRegistry = retrievalServiceRegistry;
         this.datasetValidator = datasetValidator;
         this.metricsCalculator = metricsCalculator;
         this.chunkingProperties = chunkingProperties;
+        this.hybridProperties = hybridProperties;
         this.clock = clock;
         this.nanoTime = nanoTime;
     }
@@ -69,7 +73,8 @@ public class RetrievalEvaluationService {
                 baselineIdentity.dimension(),
                 chunkingProperties.chunkSizeChars(),
                 chunkingProperties.chunkOverlapChars(),
-                baselineIdentity.scoreType());
+                baselineIdentity.scoreType(),
+                hybridMetadata(baselineIdentity.retrieverType()));
         List<RetrievalEvaluationCaseResult> failures = caseResults.stream()
                 .filter(result -> result.firstRelevantRank() == null || result.firstRelevantRank() > 5)
                 .toList();
@@ -95,7 +100,7 @@ public class RetrievalEvaluationService {
             RetrievalHit hit = hits.get(index);
             int rank = index + 1;
             retrieved.add(new RetrievalEvaluationCaseResult.RetrievedChunk(
-                    hit.chunkId(), rank, hit.score(), hit.scoreType()));
+                    hit.chunkId(), rank, hit.score(), hit.scoreType(), hit.contributions()));
             if (relevant.contains(hit.chunkId()) && matchedRelevant.add(hit.chunkId())) {
                 hitRanks.add(rank);
             }
@@ -111,6 +116,18 @@ public class RetrievalEvaluationService {
                 hitRanks,
                 firstRelevantRank,
                 latencyMs);
+    }
+
+    private HybridEvaluationMetadata hybridMetadata(RetrieverType retrieverType) {
+        if (retrieverType != RetrieverType.HYBRID_RRF) {
+            return null;
+        }
+        return new HybridEvaluationMetadata(
+                hybridProperties.rrf().k(),
+                List.of(RetrieverType.DENSE, RetrieverType.BM25),
+                hybridProperties.routeCandidateMultiplier(),
+                hybridProperties.minRouteCandidates(),
+                hybridProperties.maxRouteCandidates());
     }
 
     private static void validateResultIdentity(RetrievalEvaluationCase evaluationCase,
