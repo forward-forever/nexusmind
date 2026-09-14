@@ -1,0 +1,30 @@
+{"id":"q001","knowledgeBaseId":33,"question":"MVCC 中 Read View 和 undo log 分别负责什么？","relevantChunkIds":[17386],"category":"EXACT","note":"精确术语"}
+{"id":"q002","knowledgeBaseId":33,"question":"InnoDB 的 Next-Key Lock 是什么？","relevantChunkIds":[17388],"category":"EXACT","note":"精确术语"}
+{"id":"q003","knowledgeBaseId":33,"question":"Redis AOF 的 appendfsync everysec 和 AOF Rewrite 分别解决什么问题？","relevantChunkIds":[17392],"category":"EXACT","note":"精确配置词"}
+{"id":"q004","knowledgeBaseId":33,"question":"Kafka 的 ISR、acks=all 和 min.insync.replicas 是什么关系？","relevantChunkIds":[17395],"category":"EXACT","note":"精确术语"}
+{"id":"q005","knowledgeBaseId":33,"question":"HNSW 的 efConstruction 和 efSearch 分别影响什么？","relevantChunkIds":[17404],"category":"EXACT","note":"精确参数名"}
+{"id":"q006","knowledgeBaseId":33,"question":"为什么数据库事务有时能读到一条记录修改前的旧版本，而不会被正在写入的事务完全阻塞？","relevantChunkIds":[17386],"category":"SEMANTIC","note":"避免直接出现 MVCC 关键词"}
+{"id":"q007","knowledgeBaseId":33,"question":"同一个事务里连续做两次普通查询，为什么 RC 可能看到新提交的数据，而 RR 往往保持第一次看到的结果？","relevantChunkIds":[17387],"category":"SEMANTIC","note":"语义改写"}
+{"id":"q008","knowledgeBaseId":33,"question":"两个事务各拿着对方需要的资源，最后谁都无法继续，这属于什么问题，数据库一般怎么处理？","relevantChunkIds":[17389],"category":"SEMANTIC","note":"不直接说死锁"}
+{"id":"q009","knowledgeBaseId":33,"question":"缓存淘汰时，如果我更关心长期访问热度，而不是最近一次访问时间，应该关注哪类策略？","relevantChunkIds":[17393],"category":"SEMANTIC","note":"语义问法"}
+{"id":"q010","knowledgeBaseId":33,"question":"在线程池里保存请求上下文后忘记清理，为什么可能影响后续任务甚至造成内存滞留？","relevantChunkIds":[17401],"category":"SEMANTIC","note":"不直接问定义"}
+{"id":"q011","knowledgeBaseId":33,"question":"为什么同一个 Spring Bean 里用 this 调自己的事务方法，注解有时像没有生效一样？","relevantChunkIds":[17403],"category":"SEMANTIC","note":"典型面试场景"}
+{"id":"q012","knowledgeBaseId":33,"question":"向量检索和关键词检索的分数尺度完全不同，为什么仍然可以稳定地把两路结果融合起来？","relevantChunkIds":[17406],"category":"SEMANTIC","note":"不直接点名 RRF"}
+{"id":"q013","knowledgeBaseId":33,"question":"RC 和 RR 差在哪？","relevantChunkIds":[17387],"category":"SHORT","note":"极短 Query"}
+{"id":"q014","knowledgeBaseId":33,"question":"AOF 重写干嘛？","relevantChunkIds":[17392],"category":"SHORT","note":"口语化短问"}
+{"id":"q015","knowledgeBaseId":33,"question":"ABA 是什么？","relevantChunkIds":[17400],"category":"SHORT","note":"极短术语"}
+{"id":"q016","knowledgeBaseId":33,"question":"RRF 是干嘛的？","relevantChunkIds":[17406],"category":"SHORT","note":"极短术语"}
+{"id":"q017","knowledgeBaseId":33,"question":"一个表既有主键又有多个业务唯一键，两个并发事务都使用 INSERT ... ON DUPLICATE KEY UPDATE 写不同数据，但访问唯一索引和记录的顺序可能不同。为什么这类场景比单一主键冲突更容易出现循环等待，工程上应该怎么降低风险？","relevantChunkIds":[17389,17390],"category":"LONG","note":"跨知识点长问题"}
+{"id":"q018","knowledgeBaseId":33,"question":"一个 Kafka 消费程序读取消息、计算结果、写出新 Kafka 消息，同时还要更新 MySQL。开启幂等生产者和 Kafka Transaction 后，哪些操作可以获得 exactly-once 语义，哪些外部数据库操作仍然不能被 Kafka 事务自动保证原子性？","relevantChunkIds":[17397],"category":"LONG","note":"场景边界"}
+{"id":"q019","knowledgeBaseId":33,"question":"某 Java 服务用 Redisson 锁保护定时任务，正常任务偶尔会因为 Full GC 或网络抖动执行很久。如果没有显式固定 leaseTime，Watchdog 能解决什么问题，又有哪些失败场景不能仅靠续期机制兜底？","relevantChunkIds":[17394],"category":"LONG","note":"工程场景"}
+{"id":"q020","knowledgeBaseId":33,"question":"一个 RAG 系统先通过 Dense 与 BM25 召回大量候选，再通过融合得到 Top20。为什么还要把这 20 个候选交给另一个模型重新判断 Query 与 Chunk 的细粒度相关性，而不是直接把 Top20 全部塞给大模型？","relevantChunkIds":[17407],"category":"LONG","note":"Rerank motivation"}
+{"id":"q021","knowledgeBaseId":33,"question":"MVCC 如何通过版本链和可见性规则完成一致性读？","relevantChunkIds":[17386],"category":"ABBREVIATION","note":"缩写"}
+{"id":"q022","knowledgeBaseId":33,"question":"ISR 变小以后，acks=all 的写入为什么可能被 Broker 拒绝？","relevantChunkIds":[17395],"category":"ABBREVIATION","note":"缩写 + 配置关联"}
+{"id":"q023","knowledgeBaseId":33,"question":"CAS 的 ABA 问题为什么需要版本号或 stamp 才能识别？","relevantChunkIds":[17400],"category":"ABBREVIATION","note":"多缩写"}
+{"id":"q024","knowledgeBaseId":33,"question":"LFU 相比 LRU 更关注什么，Redis 为什么不直接维护绝对精确的访问频次排序？","relevantChunkIds":[17393],"category":"ABBREVIATION","note":"缩写"}
+{"id":"q025","knowledgeBaseId":33,"question":"HNSW 为什么通过调大 ef 往往能提高 Recall，却同时增加查询延迟？","relevantChunkIds":[17404],"category":"ABBREVIATION","note":"缩写 + 参数"}
+{"id":"q026","knowledgeBaseId":33,"question":"为什么把一个 int 声明成 volatile 后，多线程执行 i++ 仍然可能少算？","relevantChunkIds":[17398],"category":"OTHER","note":"并发陷阱"}
+{"id":"q027","knowledgeBaseId":33,"question":"一个线程退出 synchronized 临界区后，另一个线程随后拿到同一把锁，为什么能看到前一个线程已经写入的数据？","relevantChunkIds":[17399],"category":"OTHER","note":"内存语义"}
+{"id":"q028","knowledgeBaseId":33,"question":"REQUIRES_NEW 和 REQUIRED 的事务边界有什么本质差别？外层最终回滚时，已经提交的内层新事务一定会一起回滚吗？","relevantChunkIds":[17402],"category":"OTHER","note":"边界判断"}
+{"id":"q029","knowledgeBaseId":33,"question":"BM25 的公式本身没有变，为什么换成中文技术文档后 Analyzer/Tokenizer 质量会直接影响检索效果？","relevantChunkIds":[17405],"category":"OTHER","note":"检索机制"}
+{"id":"q030","knowledgeBaseId":33,"question":"在 Hybrid RAG 中，为什么常见设计是先用 RRF 融合多路召回，再用 Cross-Encoder 对候选做精排？这两个步骤分别解决什么问题？","relevantChunkIds":[17406,17407],"category":"OTHER","note":"跨页综合题"}

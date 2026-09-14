@@ -47,6 +47,43 @@ Dataset 是 UTF-8 JSONL，每行格式如下：
 
 运行前会严格验证：ID 唯一、问题非空、标签非空且不重复、KnowledgeBase 存在、Chunk 存在且属于指定 KnowledgeBase，以及 Chunk 所属 Document 为 `READY + INDEXED`。所有 expected Chunk 和 Document 分别批量查询；坏标签会让整次评测失败，不会被静默跳过。
 
+## Page-based Benchmark Labeling
+
+对于专门设计的 `nexusmind-retrieval-benchmark-v1.pdf`，可以先人工在 source JSONL 中标注页码，再用离线 Resolver 将页码转换为 ingestion 后真实生成的 `knowledge_chunk.id`。该 Benchmark PDF 遵循“一页一个知识单元”、页内正文小于当前 Chunk baseline、PDF Chunk 不跨页的约束，因此页码可以作为这套特定 Corpus 的低成本中间标签。
+
+Source JSONL 每行格式：
+
+```json
+{"id":"q001","question":"InnoDB 为什么会产生死锁？","category":"SEMANTIC","expectedPages":[4],"expectedConcept":"InnoDB deadlock","note":"人工页码标注"}
+```
+
+Resolver 从 `documentId` 查询真实 `knowledgeBaseId`，一次加载该 Document 的全部 Chunk，按 `expectedPages` 顺序及页内 `chunkIndex` 顺序映射 ID，并输出原 Evaluation Engine 可直接读取的 Golden JSONL：
+
+```text
+Source Dataset (expectedPages)
+  ↓ BenchmarkDatasetResolver
+Golden Dataset (relevantChunkIds)
+  ↓ Existing RetrievalEvaluationDatasetLoader
+DENSE / BM25 / HYBRID_RRF Evaluation
+```
+
+运行前确保目标 Document 已经完成 `READY + INDEXED`。Resolver 不需要 Milvus、Embedding 或 Chat Model：
+
+```bash
+cd /Users/wude/IdeaProjects/nexusmind/nexusmind-server
+set -a
+source ../deploy/.env
+set +a
+
+./mvnw spring-boot:run \
+  -Dspring-boot.run.profiles=local \
+  -Dspring-boot.run.arguments="--spring.main.web-application-type=none --spring.ai.model.chat=none --spring.ai.model.embedding=none --nexusmind.vector.enabled=false --nexusmind.rag.enabled=false --nexusmind.dataset-resolver.enabled=true --document-id=<DOCUMENT_ID> --source=/absolute/path/nexusmind-retrieval-benchmark-questions.source.jsonl --output=/absolute/path/local-golden.jsonl"
+```
+
+任何 source 格式错误、重复 ID、非法页码、缺页或跨 Document/KnowledgeBase 的 Chunk 数据都会使整个转换失败，不会跳过问题。一页映射到多个 Chunk 时，全部 Chunk ID 都进入 `relevantChunkIds`；超过两个 Chunk 会输出 sanity warning，提示人工核对 Benchmark 的 Chunk boundary。
+
+这一方法仅适用于上述人为控制页边界的 Benchmark Corpus。普通任意 PDF 的“一页”可能包含多个主题，相关答案也可能跨页或只由页内部分 Chunk 支持，仍然必须进行人工 relevance judgment；Page Resolver 不是通用自动标注算法。
+
 ## Metrics
 
 每条 Query 只调用一次 `RetrievalService.retrieve(..., 10)`，然后在内存中计算 `K=1/3/5/10`：

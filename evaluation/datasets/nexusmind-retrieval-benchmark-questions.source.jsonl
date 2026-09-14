@@ -1,0 +1,30 @@
+{"id": "q001", "question": "MVCC 中 Read View 和 undo log 分别负责什么？", "category": "EXACT", "expectedPages": [1], "expectedConcept": "MVCC / Read View / undo log", "note": "精确术语"}
+{"id": "q002", "question": "InnoDB 的 Next-Key Lock 是什么？", "category": "EXACT", "expectedPages": [3], "expectedConcept": "Record/Gap/Next-Key Lock", "note": "精确术语"}
+{"id": "q003", "question": "Redis AOF 的 appendfsync everysec 和 AOF Rewrite 分别解决什么问题？", "category": "EXACT", "expectedPages": [7], "expectedConcept": "AOF fsync / rewrite", "note": "精确配置词"}
+{"id": "q004", "question": "Kafka 的 ISR、acks=all 和 min.insync.replicas 是什么关系？", "category": "EXACT", "expectedPages": [10], "expectedConcept": "Kafka ISR / acks / min.insync.replicas", "note": "精确术语"}
+{"id": "q005", "question": "HNSW 的 efConstruction 和 efSearch 分别影响什么？", "category": "EXACT", "expectedPages": [19], "expectedConcept": "HNSW parameters", "note": "精确参数名"}
+{"id": "q006", "question": "为什么数据库事务有时能读到一条记录修改前的旧版本，而不会被正在写入的事务完全阻塞？", "category": "SEMANTIC", "expectedPages": [1], "expectedConcept": "MVCC visibility", "note": "避免直接出现 MVCC 关键词"}
+{"id": "q007", "question": "同一个事务里连续做两次普通查询，为什么 RC 可能看到新提交的数据，而 RR 往往保持第一次看到的结果？", "category": "SEMANTIC", "expectedPages": [2], "expectedConcept": "RC/RR Read View lifecycle", "note": "语义改写"}
+{"id": "q008", "question": "两个事务各拿着对方需要的资源，最后谁都无法继续，这属于什么问题，数据库一般怎么处理？", "category": "SEMANTIC", "expectedPages": [4], "expectedConcept": "deadlock detection/victim rollback", "note": "不直接说死锁"}
+{"id": "q009", "question": "缓存淘汰时，如果我更关心长期访问热度，而不是最近一次访问时间，应该关注哪类策略？", "category": "SEMANTIC", "expectedPages": [8], "expectedConcept": "LFU vs LRU", "note": "语义问法"}
+{"id": "q010", "question": "在线程池里保存请求上下文后忘记清理，为什么可能影响后续任务甚至造成内存滞留？", "category": "SEMANTIC", "expectedPages": [16], "expectedConcept": "ThreadLocal pool leak", "note": "不直接问定义"}
+{"id": "q011", "question": "为什么同一个 Spring Bean 里用 this 调自己的事务方法，注解有时像没有生效一样？", "category": "SEMANTIC", "expectedPages": [18], "expectedConcept": "AOP self-invocation", "note": "典型面试场景"}
+{"id": "q012", "question": "向量检索和关键词检索的分数尺度完全不同，为什么仍然可以稳定地把两路结果融合起来？", "category": "SEMANTIC", "expectedPages": [21], "expectedConcept": "RRF rank fusion", "note": "不直接点名 RRF"}
+{"id": "q013", "question": "RC 和 RR 差在哪？", "category": "SHORT", "expectedPages": [2], "expectedConcept": "RC vs RR", "note": "极短 Query"}
+{"id": "q014", "question": "AOF 重写干嘛？", "category": "SHORT", "expectedPages": [7], "expectedConcept": "AOF rewrite", "note": "口语化短问"}
+{"id": "q015", "question": "ABA 是什么？", "category": "SHORT", "expectedPages": [15], "expectedConcept": "CAS ABA", "note": "极短术语"}
+{"id": "q016", "question": "RRF 是干嘛的？", "category": "SHORT", "expectedPages": [21], "expectedConcept": "RRF", "note": "极短术语"}
+{"id": "q017", "question": "一个表既有主键又有多个业务唯一键，两个并发事务都使用 INSERT ... ON DUPLICATE KEY UPDATE 写不同数据，但访问唯一索引和记录的顺序可能不同。为什么这类场景比单一主键冲突更容易出现循环等待，工程上应该怎么降低风险？", "category": "LONG", "expectedPages": [4, 5], "expectedConcept": "ODKU + deadlock", "note": "跨知识点长问题"}
+{"id": "q018", "question": "一个 Kafka 消费程序读取消息、计算结果、写出新 Kafka 消息，同时还要更新 MySQL。开启幂等生产者和 Kafka Transaction 后，哪些操作可以获得 exactly-once 语义，哪些外部数据库操作仍然不能被 Kafka 事务自动保证原子性？", "category": "LONG", "expectedPages": [12], "expectedConcept": "Kafka EOS boundary", "note": "场景边界"}
+{"id": "q019", "question": "某 Java 服务用 Redisson 锁保护定时任务，正常任务偶尔会因为 Full GC 或网络抖动执行很久。如果没有显式固定 leaseTime，Watchdog 能解决什么问题，又有哪些失败场景不能仅靠续期机制兜底？", "category": "LONG", "expectedPages": [9], "expectedConcept": "Redisson watchdog boundary", "note": "工程场景"}
+{"id": "q020", "question": "一个 RAG 系统先通过 Dense 与 BM25 召回大量候选，再通过融合得到 Top20。为什么还要把这 20 个候选交给另一个模型重新判断 Query 与 Chunk 的细粒度相关性，而不是直接把 Top20 全部塞给大模型？", "category": "LONG", "expectedPages": [22], "expectedConcept": "Rerank precision stage", "note": "Rerank motivation"}
+{"id": "q021", "question": "MVCC 如何通过版本链和可见性规则完成一致性读？", "category": "ABBREVIATION", "expectedPages": [1], "expectedConcept": "MVCC", "note": "缩写"}
+{"id": "q022", "question": "ISR 变小以后，acks=all 的写入为什么可能被 Broker 拒绝？", "category": "ABBREVIATION", "expectedPages": [10], "expectedConcept": "ISR/min.insync.replicas", "note": "缩写 + 配置关联"}
+{"id": "q023", "question": "CAS 的 ABA 问题为什么需要版本号或 stamp 才能识别？", "category": "ABBREVIATION", "expectedPages": [15], "expectedConcept": "CAS / ABA / stamped reference", "note": "多缩写"}
+{"id": "q024", "question": "LFU 相比 LRU 更关注什么，Redis 为什么不直接维护绝对精确的访问频次排序？", "category": "ABBREVIATION", "expectedPages": [8], "expectedConcept": "LFU/LRU", "note": "缩写"}
+{"id": "q025", "question": "HNSW 为什么通过调大 ef 往往能提高 Recall，却同时增加查询延迟？", "category": "ABBREVIATION", "expectedPages": [19], "expectedConcept": "HNSW efSearch", "note": "缩写 + 参数"}
+{"id": "q026", "question": "为什么把一个 int 声明成 volatile 后，多线程执行 i++ 仍然可能少算？", "category": "OTHER", "expectedPages": [13], "expectedConcept": "volatile not atomic", "note": "并发陷阱"}
+{"id": "q027", "question": "一个线程退出 synchronized 临界区后，另一个线程随后拿到同一把锁，为什么能看到前一个线程已经写入的数据？", "category": "OTHER", "expectedPages": [14], "expectedConcept": "synchronized happens-before", "note": "内存语义"}
+{"id": "q028", "question": "REQUIRES_NEW 和 REQUIRED 的事务边界有什么本质差别？外层最终回滚时，已经提交的内层新事务一定会一起回滚吗？", "category": "OTHER", "expectedPages": [17], "expectedConcept": "transaction propagation", "note": "边界判断"}
+{"id": "q029", "question": "BM25 的公式本身没有变，为什么换成中文技术文档后 Analyzer/Tokenizer 质量会直接影响检索效果？", "category": "OTHER", "expectedPages": [20], "expectedConcept": "BM25 tokenizer", "note": "检索机制"}
+{"id": "q030", "question": "在 Hybrid RAG 中，为什么常见设计是先用 RRF 融合多路召回，再用 Cross-Encoder 对候选做精排？这两个步骤分别解决什么问题？", "category": "OTHER", "expectedPages": [21, 22], "expectedConcept": "RRF + rerank roles", "note": "跨页综合题"}

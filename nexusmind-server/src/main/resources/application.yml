@@ -36,6 +36,8 @@ info:
     description: NexusMind AI Knowledge & Agent Platform
 
 nexusmind:
+  dataset-resolver:
+    enabled: false
   evaluation:
     enabled: false
   rebuild:
