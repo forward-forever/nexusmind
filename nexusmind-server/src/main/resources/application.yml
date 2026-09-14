@@ -59,7 +59,7 @@ nexusmind:
       stream-timeout: 120s
       mvc-timeout: 150s
     rerank:
-      enabled: ${NEXUSMIND_RERANK_ENABLED:true}
+      enabled: ${NEXUSMIND_RERANK_ENABLED:false}
       model: qwen3.7-text-rerank
       base-url: ${RERANK_BASE_URL:}
       api-key: ${DASHSCOPE_API_KEY:}

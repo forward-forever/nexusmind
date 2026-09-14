@@ -2,6 +2,9 @@ package com.wude.nexusmind.rag.retrieval;
 
 import java.util.List;
 
+/**
+ * Hybrid RRF Retrieval Service. 混合检索服务
+ */
 public class HybridRrfRetrievalService implements RetrievalService {
 
     private final DenseRetrievalService denseRetrievalService;

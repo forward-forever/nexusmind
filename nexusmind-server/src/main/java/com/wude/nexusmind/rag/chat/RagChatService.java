@@ -43,6 +43,7 @@ public class RagChatService {
                           RagPromptFactory promptFactory,
                           ChatAnswerStreamer chatAnswerStreamer,
                           RagChatProperties properties) {
+        // 默认向量检索服务
         this.retrievalService = retrievalServiceRegistry.get(retrievalProperties.retriever());
         this.contextBuilder = contextBuilder;
         this.promptFactory = promptFactory;
@@ -60,7 +61,7 @@ public class RagChatService {
         long retrievalLatencyMs = elapsedMillis(retrievalStarted);
         RagContext context = contextBuilder.build(searchResult.hits());
         logRetrieval(knowledgeBaseId, normalizedQuestion, topK, searchResult, context, retrievalLatencyMs);
-
+        // 构建源事件
         RagStreamEvent sourcesEvent = RagStreamEvent.sources(context.sources());
         if (context.sources().isEmpty()) {
             return noResultsFlow(knowledgeBaseId, sourcesEvent, requestStarted);
@@ -82,6 +83,7 @@ public class RagChatService {
                 })
                 .concatWith(Mono.fromSupplier(() -> {
                     warnForUnknownCitations(knowledgeBaseId, generatedAnswer, context.sources());
+                    // 构建完成事件
                     return RagStreamEvent.done(properties.model(), elapsedMillis(requestStarted));
                 }))
                 .onErrorResume(error -> {

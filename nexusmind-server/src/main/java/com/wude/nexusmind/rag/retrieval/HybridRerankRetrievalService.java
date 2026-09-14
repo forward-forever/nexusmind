@@ -10,6 +10,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * Hybrid retrieval service that first uses RRF and then reranks the results using a language model.
+ */
 public class HybridRerankRetrievalService implements RetrievalService {
 
     private final HybridRrfRetrievalService hybridRetrievalService;
@@ -56,7 +59,9 @@ public class HybridRerankRetrievalService implements RetrievalService {
         List<RankedCandidate> ranked = validateAndMap(reranked, candidates, topK);
         List<RetrievalHit> hits = ranked.stream()
                 .sorted(Comparator.comparingDouble(RankedCandidate::score).reversed()
+                        // Break ties by pre-rerank rank
                         .thenComparingInt(RankedCandidate::preRerankRank)
+                        // Break ties by chunk ID
                         .thenComparingLong(candidate -> candidate.hit().chunkId()))
                 .map(RankedCandidate::toRetrievalHit)
                 .toList();

@@ -30,6 +30,7 @@ public class EmbeddingBatchPlanner {
             if (!current.isEmpty()
                     && (current.size() >= properties.batchSize()
                     || currentChars + itemChars > properties.maxBatchChars())) {
+                // 当前批次已满，添加到批次列表并开始新的批次
                 batches.add(List.copyOf(current));
                 current.clear();
                 currentChars = 0;

@@ -14,6 +14,12 @@ public record RerankResult(
         }
     }
 
+    /**
+     * A single item in the rerank result.
+     *
+     * @param index The index of the item in the original list.  表示该结果对应于输入 documents 列表中的原始索引位置。
+     * @param relevanceScore The relevance score of the item. 该文档与查询的语义相关性得分，取值范围为 0.0 到 1.0。分数越高，相关性越强。
+     */
     public record Item(int index, double relevanceScore) {
     }
 

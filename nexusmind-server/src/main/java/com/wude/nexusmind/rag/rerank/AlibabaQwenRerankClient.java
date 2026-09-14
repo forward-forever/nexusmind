@@ -41,6 +41,7 @@ public class AlibabaQwenRerankClient implements RerankClient {
                 new Parameters(topN, properties.instruct()));
         long startedAt = nanoTime.getAsLong();
         try {
+            // https://help.aliyun.com/zh/model-studio/text-rerank-api
             ApiResponse response = restClient.post()
                     .uri(RERANK_PATH)
                     .body(request)

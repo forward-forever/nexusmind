@@ -15,6 +15,12 @@ public class SpringAiChatAnswerStreamer implements ChatAnswerStreamer {
         this.chatClient = builder.build();
     }
 
+    /**
+     * Stream the answer to the prompt
+     *
+     * @param prompt the prompt
+     * @return the stream of the answer
+     */
     @Override
     public Flux<String> stream(RagPrompt prompt) {
         return chatClient.prompt()

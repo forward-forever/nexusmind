@@ -22,6 +22,13 @@ public class RagChatController {
         this.ragChatService = ragChatService;
     }
 
+    /**
+     * Stream a chat response for the given question.
+     *
+     * @param knowledgeBaseId The ID of the knowledge base.
+     * @param request The chat request.
+     * @return A stream of chat events.
+     */
     @PostMapping(
             value = "/{knowledgeBaseId}/rag/stream",
             consumes = MediaType.APPLICATION_JSON_VALUE,

@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import DocumentPanel from '@/components/DocumentPanel.vue'
 import KnowledgeBasePanel from '@/components/KnowledgeBasePanel.vue'
 import RagChatPanel from '@/components/RagChatPanel.vue'
+import RetrievalDebugPanel from '@/components/RetrievalDebugPanel.vue'
 import { createKnowledgeBase, listKnowledgeBases } from '@/api/knowledge'
 import { indexDocument, listDocuments, processDocument, uploadDocument } from '@/api/document'
 import { errorMessage } from '@/api/http'
@@ -183,7 +184,7 @@ function showNotice(kind: NoticeKind, message: string): void {
           <p>AI Knowledge & Agent Platform</p>
         </div>
       </div>
-      <div class="version-label"><span></span> V1 · Dense RAG</div>
+      <div class="version-label"><span></span> V2 · Retrieval Quality</div>
     </header>
 
     <div v-if="notice" class="notice" :data-kind="notice.kind" role="status">
@@ -231,9 +232,16 @@ function showNotice(kind: NoticeKind, message: string): void {
             :knowledge-base-name="selectedKnowledgeBase.name"
             :ready="hasIndexedDocument"
           />
+
+          <RetrievalDebugPanel
+            :key="`retrieval-${selectedKnowledgeBase.id}`"
+            :knowledge-base-id="selectedKnowledgeBase.id"
+            :knowledge-base-name="selectedKnowledgeBase.name"
+            :ready="hasIndexedDocument"
+          />
         </template>
         <section v-else class="empty-workspace">
-          <p class="eyebrow">NexusMind V1</p>
+          <p class="eyebrow">NexusMind V2</p>
           <h2>Create a Knowledge Base to begin</h2>
           <p>Upload, process, index, and ask grounded questions—all from this page.</p>
         </section>

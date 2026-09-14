@@ -164,6 +164,9 @@ public class MilvusDenseVectorIndex implements DenseVectorIndex, Bm25SparseIndex
         }
     }
 
+    /**
+     * 向量搜索
+     */
     @Override
     public List<DenseVectorHit> search(String collectionName,
                                        long knowledgeBaseId,
@@ -176,6 +179,7 @@ public class MilvusDenseVectorIndex implements DenseVectorIndex, Bm25SparseIndex
             SearchResp response = client.search(SearchReq.builder()
                     .collectionName(collectionName)
                     .annsField(EMBEDDING)
+                    // 余弦相似度
                     .metricType(IndexParam.MetricType.COSINE)
                     .topK(topK)
                     .filter(KNOWLEDGE_BASE_ID + " == " + knowledgeBaseId)
@@ -196,6 +200,9 @@ public class MilvusDenseVectorIndex implements DenseVectorIndex, Bm25SparseIndex
         }
     }
 
+    /**
+     * 全文搜索
+     */
     @Override
     public List<Bm25SparseHit> search(String collectionName,
                                       long knowledgeBaseId,
@@ -235,6 +242,11 @@ public class MilvusDenseVectorIndex implements DenseVectorIndex, Bm25SparseIndex
                 .build()));
     }
 
+    /**
+     * Create a collection if it does not exist, and wait for it to be ready.
+     * @param collectionName the name of the collection to create
+     * @param dimension the dimension of the vector space
+     */
     private void createCollection(String collectionName, int dimension) {
         CreateCollectionReq.CollectionSchema schema = CreateCollectionReq.CollectionSchema.builder()
                 .enableDynamicField(false)
