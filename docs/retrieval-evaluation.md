@@ -10,7 +10,7 @@ RetrievalService.retrieve(..., topK=10)
 Retrieved Chunk Ranking
 ```
 
-它不调用 ChatModel，不评估 Context、答案或 Citation，也不实现 Rerank、Query Rewrite 或 Multi Query。Checkpoint 9 起，同一评测引擎可通过 Registry 选择 `DENSE`、`BM25` 或 `HYBRID_RRF`，三者必须使用同一份 Golden Dataset。
+它不调用 ChatModel，不评估 Context、答案或 Citation，也不实现 Query Rewrite 或 Multi Query。Checkpoint 10 起，同一评测引擎可通过 Registry 选择 `DENSE`、`BM25`、`HYBRID_RRF` 或 `HYBRID_RERANK`，四者必须使用同一份 Golden Dataset。
 
 ## Golden Dataset
 
@@ -132,6 +132,14 @@ Hybrid 同样使用该 Dataset。它会运行一次 Dense route（即一次 Quer
   -Dspring-boot.run.arguments="--spring.main.web-application-type=none --spring.ai.model.chat=none --nexusmind.rag.enabled=false --nexusmind.evaluation.enabled=true --retriever=HYBRID_RRF --dataset=/absolute/path/to/local-golden.jsonl --output=/Users/wude/IdeaProjects/nexusmind/evaluation/reports"
 ```
 
+Hybrid Rerank 在相同 Golden Dataset 上执行 `HYBRID_RRF Top20 → qwen3.7-text-rerank → Top10`。它不调用 ChatModel，但需要 `DASHSCOPE_API_KEY` 和独立的 `RERANK_BASE_URL`：
+
+```bash
+./mvnw spring-boot:run \
+  -Dspring-boot.run.profiles=local \
+  -Dspring-boot.run.arguments="--spring.main.web-application-type=none --spring.ai.model.chat=none --nexusmind.rag.enabled=false --nexusmind.ai.rerank.enabled=true --nexusmind.evaluation.enabled=true --retriever=HYBRID_RERANK --dataset=/absolute/path/to/benchmark-local-golden.jsonl --output=/Users/wude/IdeaProjects/nexusmind/evaluation/reports"
+```
+
 `RetrievalEvaluationCli` 复用真实 Spring Context 和 `RetrievalEvaluationService`，完成后关闭 Context 并退出，不启动 Web Server，也不暴露 Evaluation REST API。
 
 ## Reports
@@ -145,8 +153,10 @@ bm25-20260910-173100-000.json
 bm25-20260910-173100-000.md
 hybrid_rrf-20260910-173200-000.json
 hybrid_rrf-20260910-173200-000.md
+hybrid_rerank-20260910-173300-000.json
+hybrid_rerank-20260910-173300-000.md
 ```
 
-JSON 保存 baseline metadata、全部 case ranking、指标、latency、category breakdown 和 failure cases。Hybrid metadata 还记录 RRF k、两条 route 及 route candidate depth 参数；每个 Hybrid hit 保存 Dense/BM25 rank 与原始 score contribution。Markdown 提供指标表、latency 表、分类汇总和逐条失败分析。两种报告都只记录问题、Chunk ID、rank、score/scoreType、contribution 与 latency，不写入 Chunk content 或文档正文。
+JSON 保存 baseline metadata、全部 case ranking、指标、latency、category breakdown 和 failure cases。Hybrid metadata 还记录 RRF k、两条 route 及 route candidate depth 参数；Rerank metadata 记录模型、candidate TopN 和 upstream Retriever。每个 Rerank hit 继续保存 Dense/BM25 contribution，并记录 pre-rerank rank/RRF score。Markdown 提供指标表、latency 表、分类汇总和逐条失败分析。两种报告都只记录问题、Chunk ID、rank、score/scoreType、provenance 与 latency，不写入 Chunk content 或文档正文。
 
 `evaluation/reports/` 默认被 Git 忽略。用户确认有价值的正式 baseline summary 后，可人工整理到 `docs/evaluation/`。

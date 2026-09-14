@@ -4,5 +4,6 @@ public enum RetrieverType {
 
     DENSE,
     BM25,
-    HYBRID_RRF
+    HYBRID_RRF,
+    HYBRID_RERANK
 }

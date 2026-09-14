@@ -57,6 +57,7 @@ public class RetrievalReportWriter {
                 .append(metadata.chunkOverlapChars()).append(" chars\n")
                 .append("- Score type: ").append(metadata.scoreType()).append('\n');
         appendHybridMetadata(markdown, metadata.hybrid());
+        appendRerankMetadata(markdown, metadata.rerank());
         markdown.append('\n')
                 .append("## Ranking Metrics\n\n")
                 .append("| Metric | @1 | @3 | @5 | @10 |\n")
@@ -114,6 +115,17 @@ public class RetrievalReportWriter {
                 .append('\n');
     }
 
+    private static void appendRerankMetadata(StringBuilder markdown,
+                                             RerankEvaluationMetadata rerank) {
+        if (rerank == null) {
+            return;
+        }
+        markdown.append("- Rerank model: ").append(rerank.model()).append('\n')
+                .append("- Rerank candidates: baseline=").append(rerank.candidateTopN())
+                .append(", max=").append(rerank.maxCandidateTopN()).append('\n')
+                .append("- Rerank upstream: ").append(rerank.upstreamRetriever()).append('\n');
+    }
+
     private static String retrievedSummary(RetrievalEvaluationCaseResult.RetrievedChunk hit) {
         if (hit.contributions().isEmpty()) {
             return hit.chunkId() + "@" + hit.rank() + " " + hit.scoreType() + "=" + hit.score();
@@ -126,8 +138,13 @@ public class RetrievalReportWriter {
                         contribution.rawScore()))
                 .toList()
                 .toString();
-        return hit.chunkId() + "@" + hit.rank() + " RRF=" + hit.score()
-                + " contributions=" + contributions;
+        String upstream = hit.rerank() == null
+                ? ""
+                : " preRerankRank=" + hit.rerank().preRerankRank()
+                + " preRerankScore=" + hit.rerank().preRerankScore()
+                + " preRerankScoreType=" + hit.rerank().preRerankScoreType();
+        return hit.chunkId() + "@" + hit.rank() + " " + hit.scoreType() + "=" + hit.score()
+                + upstream + " contributions=" + contributions;
     }
 
     private static String metricRow(String name,
@@ -156,6 +173,9 @@ public class RetrievalReportWriter {
         }
         if ("HYBRID_RRF".equals(value)) {
             return "Hybrid RRF";
+        }
+        if ("HYBRID_RERANK".equals(value)) {
+            return "Hybrid Rerank";
         }
         String lowerCase = value.toLowerCase(Locale.ROOT).replace('_', ' ');
         return Character.toUpperCase(lowerCase.charAt(0)) + lowerCase.substring(1);

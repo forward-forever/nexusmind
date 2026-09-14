@@ -15,6 +15,7 @@ class HybridRouteCandidatePlannerTest {
         assertThat(planner.plan(5)).isEqualTo(20);
         assertThat(planner.plan(10)).isEqualTo(40);
         assertThat(planner.plan(20)).isEqualTo(60);
+        assertThat(planner.plan(30)).isEqualTo(60);
     }
 
     @Test
@@ -22,7 +23,7 @@ class HybridRouteCandidatePlannerTest {
         HybridRouteCandidatePlanner planner = new HybridRouteCandidatePlanner(properties());
 
         assertThatThrownBy(() -> planner.plan(0)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> planner.plan(21)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> planner.plan(61)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new HybridRetrievalProperties(
                 new HybridRetrievalProperties.Rrf(0), 4, 20, 60))
                 .isInstanceOf(IllegalArgumentException.class);

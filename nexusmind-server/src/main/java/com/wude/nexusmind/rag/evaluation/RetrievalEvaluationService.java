@@ -7,6 +7,8 @@ import com.wude.nexusmind.rag.retrieval.RetrievalService;
 import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
 import com.wude.nexusmind.rag.retrieval.RetrieverType;
 import com.wude.nexusmind.rag.retrieval.HybridRetrievalProperties;
+import com.wude.nexusmind.rag.retrieval.RerankRetrievalProperties;
+import com.wude.nexusmind.model.config.RerankProviderProperties;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -26,6 +28,8 @@ public class RetrievalEvaluationService {
     private final RetrievalMetricsCalculator metricsCalculator;
     private final ChunkingProperties chunkingProperties;
     private final HybridRetrievalProperties hybridProperties;
+    private final RerankProviderProperties rerankProviderProperties;
+    private final RerankRetrievalProperties rerankRetrievalProperties;
     private final Clock clock;
     private final LongSupplier nanoTime;
 
@@ -34,6 +38,8 @@ public class RetrievalEvaluationService {
                                       RetrievalMetricsCalculator metricsCalculator,
                                       ChunkingProperties chunkingProperties,
                                       HybridRetrievalProperties hybridProperties,
+                                      RerankProviderProperties rerankProviderProperties,
+                                      RerankRetrievalProperties rerankRetrievalProperties,
                                       Clock clock,
                                       LongSupplier nanoTime) {
         this.retrievalServiceRegistry = retrievalServiceRegistry;
@@ -41,6 +47,8 @@ public class RetrievalEvaluationService {
         this.metricsCalculator = metricsCalculator;
         this.chunkingProperties = chunkingProperties;
         this.hybridProperties = hybridProperties;
+        this.rerankProviderProperties = rerankProviderProperties;
+        this.rerankRetrievalProperties = rerankRetrievalProperties;
         this.clock = clock;
         this.nanoTime = nanoTime;
     }
@@ -74,7 +82,8 @@ public class RetrievalEvaluationService {
                 chunkingProperties.chunkSizeChars(),
                 chunkingProperties.chunkOverlapChars(),
                 baselineIdentity.scoreType(),
-                hybridMetadata(baselineIdentity.retrieverType()));
+                hybridMetadata(baselineIdentity.retrieverType()),
+                rerankMetadata(baselineIdentity.retrieverType()));
         List<RetrievalEvaluationCaseResult> failures = caseResults.stream()
                 .filter(result -> result.firstRelevantRank() == null || result.firstRelevantRank() > 5)
                 .toList();
@@ -100,7 +109,8 @@ public class RetrievalEvaluationService {
             RetrievalHit hit = hits.get(index);
             int rank = index + 1;
             retrieved.add(new RetrievalEvaluationCaseResult.RetrievedChunk(
-                    hit.chunkId(), rank, hit.score(), hit.scoreType(), hit.contributions()));
+                    hit.chunkId(), rank, hit.score(), hit.scoreType(),
+                    hit.contributions(), hit.rerank()));
             if (relevant.contains(hit.chunkId()) && matchedRelevant.add(hit.chunkId())) {
                 hitRanks.add(rank);
             }
@@ -119,7 +129,8 @@ public class RetrievalEvaluationService {
     }
 
     private HybridEvaluationMetadata hybridMetadata(RetrieverType retrieverType) {
-        if (retrieverType != RetrieverType.HYBRID_RRF) {
+        if (retrieverType != RetrieverType.HYBRID_RRF
+                && retrieverType != RetrieverType.HYBRID_RERANK) {
             return null;
         }
         return new HybridEvaluationMetadata(
@@ -128,6 +139,17 @@ public class RetrievalEvaluationService {
                 hybridProperties.routeCandidateMultiplier(),
                 hybridProperties.minRouteCandidates(),
                 hybridProperties.maxRouteCandidates());
+    }
+
+    private RerankEvaluationMetadata rerankMetadata(RetrieverType retrieverType) {
+        if (retrieverType != RetrieverType.HYBRID_RERANK) {
+            return null;
+        }
+        return new RerankEvaluationMetadata(
+                rerankProviderProperties.model(),
+                rerankRetrievalProperties.candidateTopN(),
+                rerankRetrievalProperties.maxCandidateTopN(),
+                RetrieverType.HYBRID_RRF);
     }
 
     private static void validateResultIdentity(RetrievalEvaluationCase evaluationCase,

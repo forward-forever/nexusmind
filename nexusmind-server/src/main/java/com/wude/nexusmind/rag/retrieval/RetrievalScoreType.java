@@ -4,5 +4,6 @@ public enum RetrievalScoreType {
 
     COSINE,
     BM25,
-    RRF
+    RRF,
+    RERANK
 }

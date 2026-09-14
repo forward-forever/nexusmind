@@ -9,9 +9,9 @@ public class HybridRouteCandidatePlanner {
     }
 
     public int plan(int finalTopK) {
-        if (finalTopK <= 0 || finalTopK > RetrievalLimits.MAX_PUBLIC_TOP_K) {
+        if (finalTopK <= 0 || finalTopK > RetrievalLimits.MAX_ROUTE_CANDIDATES) {
             throw new IllegalArgumentException(
-                    "Hybrid topK must be between 1 and " + RetrievalLimits.MAX_PUBLIC_TOP_K);
+                    "Hybrid topK must be between 1 and " + RetrievalLimits.MAX_ROUTE_CANDIDATES);
         }
         long multiplied = (long) finalTopK * properties.routeCandidateMultiplier();
         long minimumApplied = Math.max(Math.max(multiplied, properties.minRouteCandidates()), finalTopK);

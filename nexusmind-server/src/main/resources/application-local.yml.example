@@ -69,6 +69,13 @@ nexusmind:
       max-context-chars: 12000
       stream-timeout: ${NEXUSMIND_CHAT_STREAM_TIMEOUT:120s}
       mvc-timeout: ${NEXUSMIND_CHAT_MVC_TIMEOUT:150s}
+    rerank:
+      enabled: ${NEXUSMIND_RERANK_ENABLED:false}
+      model: qwen3.7-text-rerank
+      base-url: ${RERANK_BASE_URL:}
+      api-key: ${DASHSCOPE_API_KEY:}
+      timeout: ${RERANK_TIMEOUT:3s}
+      instruct: Given a web search query, retrieve relevant passages that answer the query.
   milvus:
     enabled: true
     uri: ${MILVUS_URI:http://localhost:19530}

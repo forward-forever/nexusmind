@@ -35,7 +35,9 @@ import static org.assertj.core.api.Assertions.assertThat;
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
                 "spring.ai.model.chat=none",
-                "spring.ai.model.embedding=none",
+                "spring.ai.model.embedding=openai",
+                "spring.autoconfigure.exclude="
+                        + "org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration",
                 "nexusmind.vector.enabled=true",
                 "nexusmind.milvus.enabled=true",
                 "nexusmind.rag.enabled=true",

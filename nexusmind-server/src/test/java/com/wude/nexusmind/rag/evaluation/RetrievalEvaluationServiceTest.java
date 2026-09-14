@@ -9,9 +9,13 @@ import com.wude.nexusmind.rag.retrieval.RetrievalService;
 import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
 import com.wude.nexusmind.rag.retrieval.RetrieverType;
 import com.wude.nexusmind.rag.retrieval.HybridRetrievalProperties;
+import com.wude.nexusmind.rag.retrieval.RerankRetrievalProperties;
+import com.wude.nexusmind.rag.retrieval.RerankProvenance;
+import com.wude.nexusmind.model.config.RerankProviderProperties;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -49,6 +53,8 @@ class RetrievalEvaluationServiceTest {
                 new RetrievalMetricsCalculator(),
                 new ChunkingProperties(500, 100),
                 hybridProperties(),
+                rerankProviderProperties(),
+                new RerankRetrievalProperties(20, 50),
                 Clock.systemUTC(),
                 new IncrementingNanoTime());
         RetrievalEvaluationDataset dataset = new RetrievalEvaluationDataset(
@@ -107,6 +113,8 @@ class RetrievalEvaluationServiceTest {
                 new RetrievalMetricsCalculator(),
                 new ChunkingProperties(500, 100),
                 hybridProperties(),
+                rerankProviderProperties(),
+                new RerankRetrievalProperties(20, 50),
                 Clock.systemUTC(),
                 new IncrementingNanoTime());
         RetrievalEvaluationDataset dataset = new RetrievalEvaluationDataset(
@@ -128,9 +136,76 @@ class RetrievalEvaluationServiceTest {
         assertThat(report.cases().get(0).retrieved().get(0).contributions()).hasSize(2);
     }
 
+    @Test
+    void evaluatesHybridRerankThroughRegistryWithRerankAndUpstreamMetadata() {
+        RetrievalService rerank = new RetrievalService() {
+            @Override
+            public RetrieverType type() {
+                return RetrieverType.HYBRID_RERANK;
+            }
+
+            @Override
+            public RetrievalResult retrieve(long knowledgeBaseId, String query, int topK) {
+                return new RetrievalResult(
+                        query,
+                        knowledgeBaseId,
+                        "qwen3.7-text-embedding-flash",
+                        1024,
+                        RetrieverType.HYBRID_RERANK,
+                        RetrievalScoreType.RERANK,
+                        topK,
+                        List.of(new RetrievalHit(
+                                101L, 10L, "fixture.txt", 0, 0.94,
+                                RetrievalScoreType.RERANK, "content", null, null,
+                                List.of(
+                                        new RetrievalContribution(
+                                                RetrieverType.DENSE, 2, 0.82,
+                                                RetrievalScoreType.COSINE),
+                                        new RetrievalContribution(
+                                                RetrieverType.BM25, 8, 8.73,
+                                                RetrievalScoreType.BM25)),
+                                new RerankProvenance(5, 0.0308, RetrievalScoreType.RRF))));
+            }
+        };
+        RetrievalEvaluationService service = new RetrievalEvaluationService(
+                new RetrievalServiceRegistry(List.of(rerank)),
+                mock(RetrievalDatasetValidator.class),
+                new RetrievalMetricsCalculator(),
+                new ChunkingProperties(500, 100),
+                hybridProperties(),
+                rerankProviderProperties(),
+                new RerankRetrievalProperties(20, 50),
+                Clock.systemUTC(),
+                new IncrementingNanoTime());
+        RetrievalEvaluationDataset dataset = new RetrievalEvaluationDataset(
+                "same-golden",
+                List.of(new RetrievalEvaluationCase(
+                        "q1", 7L, "InnoDB 死锁", List.of(101L), QueryCategory.EXACT, null)));
+
+        RetrievalEvaluationReport report = service.evaluate(dataset, RetrieverType.HYBRID_RERANK);
+
+        assertThat(report.metadata().retrieverType()).isEqualTo(RetrieverType.HYBRID_RERANK);
+        assertThat(report.metadata().scoreType()).isEqualTo(RetrievalScoreType.RERANK);
+        assertThat(report.metadata().hybrid()).isNotNull();
+        assertThat(report.metadata().rerank()).satisfies(metadata -> {
+            assertThat(metadata.model()).isEqualTo("qwen3.7-text-rerank");
+            assertThat(metadata.candidateTopN()).isEqualTo(20);
+            assertThat(metadata.maxCandidateTopN()).isEqualTo(50);
+            assertThat(metadata.upstreamRetriever()).isEqualTo(RetrieverType.HYBRID_RRF);
+        });
+        assertThat(report.cases().get(0).retrieved().get(0).rerank())
+                .isEqualTo(new RerankProvenance(5, 0.0308, RetrievalScoreType.RRF));
+    }
+
     private static HybridRetrievalProperties hybridProperties() {
         return new HybridRetrievalProperties(
                 new HybridRetrievalProperties.Rrf(60), 4, 20, 60);
+    }
+
+    private static RerankProviderProperties rerankProviderProperties() {
+        return new RerankProviderProperties(
+                false, "qwen3.7-text-rerank", "", "", Duration.ofSeconds(3),
+                "Given a web search query, retrieve relevant passages that answer the query.");
     }
 
     private static final class IncrementingNanoTime implements java.util.function.LongSupplier {

@@ -10,7 +10,8 @@ public record DenseSearchResult(
         RetrieverType retrieverType,
         String metric,
         int topK,
-        List<RetrievalHit> results
+        List<RetrievalHit> results,
+        RerankExecutionMetadata rerank
 ) {
     public DenseSearchResult {
         results = List.copyOf(results);
@@ -25,6 +26,7 @@ public record DenseSearchResult(
                 result.retrieverType(),
                 result.scoreType().name(),
                 result.topK(),
-                result.hits());
+                result.hits(),
+                result.rerank());
     }
 }

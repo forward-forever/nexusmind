@@ -12,6 +12,8 @@ import com.wude.nexusmind.rag.evaluation.RetrievalMetricsCalculator;
 import com.wude.nexusmind.rag.evaluation.RetrievalReportWriter;
 import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
 import com.wude.nexusmind.rag.retrieval.HybridRetrievalProperties;
+import com.wude.nexusmind.rag.retrieval.RerankRetrievalProperties;
+import com.wude.nexusmind.model.config.RerankProviderProperties;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
@@ -48,13 +50,17 @@ public class EvaluationConfiguration {
             RetrievalDatasetValidator datasetValidator,
             RetrievalMetricsCalculator metricsCalculator,
             ChunkingProperties chunkingProperties,
-            HybridRetrievalProperties hybridProperties) {
+            HybridRetrievalProperties hybridProperties,
+            RerankProviderProperties rerankProviderProperties,
+            RerankRetrievalProperties rerankRetrievalProperties) {
         return new RetrievalEvaluationService(
                 retrievalServiceRegistry,
                 datasetValidator,
                 metricsCalculator,
                 chunkingProperties,
                 hybridProperties,
+                rerankProviderProperties,
+                rerankRetrievalProperties,
                 Clock.systemUTC(),
                 System::nanoTime);
     }

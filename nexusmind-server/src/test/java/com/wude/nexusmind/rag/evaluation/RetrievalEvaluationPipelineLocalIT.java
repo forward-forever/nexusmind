@@ -16,6 +16,9 @@ import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
 import com.wude.nexusmind.rag.retrieval.RetrieverType;
 import com.wude.nexusmind.rag.retrieval.HybridRetrievalProperties;
 import com.wude.nexusmind.rag.retrieval.RetrievalContribution;
+import com.wude.nexusmind.rag.retrieval.RerankRetrievalProperties;
+import com.wude.nexusmind.rag.retrieval.RerankProvenance;
+import com.wude.nexusmind.model.config.RerankProviderProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.ObjectMapper;
@@ -24,6 +27,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -85,6 +89,8 @@ class RetrievalEvaluationPipelineLocalIT {
                 new ChunkingProperties(500, 100),
                 new HybridRetrievalProperties(
                         new HybridRetrievalProperties.Rrf(60), 4, 20, 60),
+                rerankProviderProperties(),
+                new RerankRetrievalProperties(20, 50),
                 Clock.fixed(Instant.parse("2026-09-10T09:30:00Z"), ZoneOffset.UTC),
                 () -> nanoTime.getAndAdd(10_000_000));
 
@@ -147,6 +153,8 @@ class RetrievalEvaluationPipelineLocalIT {
                 new ChunkingProperties(500, 100),
                 new HybridRetrievalProperties(
                         new HybridRetrievalProperties.Rrf(60), 4, 20, 60),
+                rerankProviderProperties(),
+                new RerankRetrievalProperties(20, 50),
                 Clock.fixed(Instant.parse("2026-09-13T09:30:00Z"), ZoneOffset.UTC),
                 new AtomicLong()::getAndIncrement);
 
@@ -164,6 +172,67 @@ class RetrievalEvaluationPipelineLocalIT {
         assertThat(markdown)
                 .contains("# Hybrid RRF Retrieval Baseline", "- RRF k: 60")
                 .contains("DENSE#1 COSINE=0.82", "BM25#1 BM25=8.73")
+                .doesNotContain("secret-content");
+    }
+
+    @Test
+    void writesHybridRerankMetadataAndProvenanceWithoutContent() throws IOException {
+        ObjectMapper objectMapper = new ObjectMapper();
+        RetrievalEvaluationDataset dataset = new RetrievalEvaluationDataset(
+                "same-golden",
+                List.of(new RetrievalEvaluationCase(
+                        "q001", 12L, "rerank question", List.of(999L), QueryCategory.SEMANTIC, null)));
+        RetrievalService rerank = new RetrievalService() {
+            @Override
+            public RetrieverType type() {
+                return RetrieverType.HYBRID_RERANK;
+            }
+
+            @Override
+            public RetrievalResult retrieve(long knowledgeBaseId, String query, int topK) {
+                return new RetrievalResult(
+                        query, knowledgeBaseId, "deterministic-embedding", 4,
+                        RetrieverType.HYBRID_RERANK, RetrievalScoreType.RERANK, topK,
+                        List.of(new RetrievalHit(
+                                101L, 10L, "fixture.txt", 0, 0.94,
+                                RetrievalScoreType.RERANK, "secret-content", null, null,
+                                List.of(
+                                        new RetrievalContribution(
+                                                RetrieverType.DENSE, 2, 0.82,
+                                                RetrievalScoreType.COSINE),
+                                        new RetrievalContribution(
+                                                RetrieverType.BM25, 8, 8.73,
+                                                RetrievalScoreType.BM25)),
+                                new RerankProvenance(5, 0.0308, RetrievalScoreType.RRF))));
+            }
+        };
+        RetrievalEvaluationService service = new RetrievalEvaluationService(
+                new RetrievalServiceRegistry(List.of(rerank)),
+                mock(RetrievalDatasetValidator.class),
+                new RetrievalMetricsCalculator(),
+                new ChunkingProperties(500, 100),
+                new HybridRetrievalProperties(
+                        new HybridRetrievalProperties.Rrf(60), 4, 20, 60),
+                rerankProviderProperties(),
+                new RerankRetrievalProperties(20, 50),
+                Clock.fixed(Instant.parse("2026-09-14T09:30:00Z"), ZoneOffset.UTC),
+                new AtomicLong()::getAndIncrement);
+
+        RetrievalEvaluationReport report = service.evaluate(dataset, RetrieverType.HYBRID_RERANK);
+        RetrievalReportFiles files = new RetrievalReportWriter(objectMapper)
+                .write(report, temporaryDirectory.resolve("rerank-reports"));
+        String json = Files.readString(files.json());
+        String markdown = Files.readString(files.markdown());
+
+        assertThat(json)
+                .contains("\"retrieverType\" : \"HYBRID_RERANK\"", "\"scoreType\" : \"RERANK\"")
+                .contains("\"model\" : \"qwen3.7-text-rerank\"", "\"candidateTopN\" : 20")
+                .contains("\"preRerankRank\" : 5", "\"preRerankScoreType\" : \"RRF\"")
+                .doesNotContain("secret-content");
+        assertThat(markdown)
+                .contains("# Hybrid Rerank Retrieval Baseline")
+                .contains("- Rerank model: qwen3.7-text-rerank")
+                .contains("preRerankRank=5", "DENSE#2 COSINE=0.82", "BM25#8 BM25=8.73")
                 .doesNotContain("secret-content");
     }
 
@@ -194,5 +263,11 @@ class RetrievalEvaluationPipelineLocalIT {
             hits.add(hit(rank == 8 ? 102L : 200L + rank, 1.0f - rank / 20.0f));
         }
         return hits;
+    }
+
+    private static RerankProviderProperties rerankProviderProperties() {
+        return new RerankProviderProperties(
+                false, "qwen3.7-text-rerank", "", "", Duration.ofSeconds(3),
+                "Given a web search query, retrieve relevant passages that answer the query.");
     }
 }

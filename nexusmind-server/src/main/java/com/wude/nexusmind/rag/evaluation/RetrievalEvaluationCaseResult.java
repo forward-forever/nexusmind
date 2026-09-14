@@ -2,6 +2,7 @@ package com.wude.nexusmind.rag.evaluation;
 
 import com.wude.nexusmind.rag.retrieval.RetrievalScoreType;
 import com.wude.nexusmind.rag.retrieval.RetrievalContribution;
+import com.wude.nexusmind.rag.retrieval.RerankProvenance;
 
 import java.util.List;
 
@@ -27,7 +28,8 @@ public record RetrievalEvaluationCaseResult(
             int rank,
             double score,
             RetrievalScoreType scoreType,
-            List<RetrievalContribution> contributions) {
+            List<RetrievalContribution> contributions,
+            RerankProvenance rerank) {
 
         public RetrievedChunk {
             contributions = List.copyOf(contributions);

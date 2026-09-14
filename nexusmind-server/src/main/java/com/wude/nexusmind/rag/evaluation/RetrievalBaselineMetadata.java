@@ -14,5 +14,6 @@ public record RetrievalBaselineMetadata(
         int chunkSizeChars,
         int chunkOverlapChars,
         RetrievalScoreType scoreType,
-        HybridEvaluationMetadata hybrid) {
+        HybridEvaluationMetadata hybrid,
+        RerankEvaluationMetadata rerank) {
 }

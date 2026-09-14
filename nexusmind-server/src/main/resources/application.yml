@@ -58,6 +58,13 @@ nexusmind:
       max-context-chars: 12000
       stream-timeout: 120s
       mvc-timeout: 150s
+    rerank:
+      enabled: ${NEXUSMIND_RERANK_ENABLED:true}
+      model: qwen3.7-text-rerank
+      base-url: ${RERANK_BASE_URL:}
+      api-key: ${DASHSCOPE_API_KEY:}
+      timeout: ${RERANK_TIMEOUT:3s}
+      instruct: Given a web search query, retrieve relevant passages that answer the query.
   rag:
     enabled: false
     retriever: DENSE
@@ -67,6 +74,9 @@ nexusmind:
       route-candidate-multiplier: 4
       min-route-candidates: 20
       max-route-candidates: 60
+    rerank:
+      candidate-top-n: 20
+      max-candidate-top-n: 50
   milvus:
     enabled: false
     uri: ${MILVUS_URI:http://localhost:19530}
