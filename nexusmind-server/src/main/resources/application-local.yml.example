@@ -51,6 +51,9 @@ nexusmind:
     knowledge-search:
       retriever: ${NEXUSMIND_AGENT_RETRIEVER:DENSE}
       top-k: ${NEXUSMIND_AGENT_TOP_K:5}
+    document-context:
+      before-chunks: ${NEXUSMIND_AGENT_CONTEXT_BEFORE_CHUNKS:1}
+      after-chunks: ${NEXUSMIND_AGENT_CONTEXT_AFTER_CHUNKS:1}
   vector:
     enabled: true
   rag:

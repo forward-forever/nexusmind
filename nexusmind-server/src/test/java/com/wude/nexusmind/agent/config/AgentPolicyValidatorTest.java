@@ -18,7 +18,8 @@ class AgentPolicyValidatorTest {
     void rejectsKnowledgeSearchTopKAboveExistingRetrievalMaximum() {
         AgentProperties properties = new AgentProperties(
                 true, 5, Duration.ofSeconds(30),
-                new AgentProperties.KnowledgeSearch(RetrieverType.DENSE, 21));
+                new AgentProperties.KnowledgeSearch(RetrieverType.DENSE, 21),
+                contextPolicy());
 
         assertThatThrownBy(() -> new AgentPolicyValidator(
                 properties, registry()))
@@ -30,7 +31,8 @@ class AgentPolicyValidatorTest {
     void rejectsRetrieverThatIsNotAvailableInTheRuntimeRegistry() {
         AgentProperties properties = new AgentProperties(
                 true, 5, Duration.ofSeconds(30),
-                new AgentProperties.KnowledgeSearch(RetrieverType.BM25, 5));
+                new AgentProperties.KnowledgeSearch(RetrieverType.BM25, 5),
+                contextPolicy());
 
         assertThatThrownBy(() -> new AgentPolicyValidator(
                 properties, registry()))
@@ -42,7 +44,8 @@ class AgentPolicyValidatorTest {
     void rejectsNonPositiveAbsoluteDuration() {
         assertThatThrownBy(() -> new AgentProperties(
                 true, 5, Duration.ZERO,
-                new AgentProperties.KnowledgeSearch(RetrieverType.DENSE, 5)))
+                new AgentProperties.KnowledgeSearch(RetrieverType.DENSE, 5),
+                contextPolicy()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("duration must be positive");
     }
@@ -51,6 +54,10 @@ class AgentPolicyValidatorTest {
         RetrievalService dense = mock(RetrievalService.class);
         when(dense.type()).thenReturn(RetrieverType.DENSE);
         return new RetrievalServiceRegistry(List.of(dense));
+    }
+
+    private static AgentProperties.DocumentContext contextPolicy() {
+        return new AgentProperties.DocumentContext(1, 1);
     }
 
 }

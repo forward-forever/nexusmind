@@ -39,6 +39,22 @@
         ORDER BY chunk_index
     </select>
 
+    <select id="findById" resultMap="knowledgeChunkResultMap">
+        SELECT id, knowledge_base_id, document_id, chunk_index, content, page_no,
+               section_title, char_count, token_count, created_at
+        FROM knowledge_chunk
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByDocumentIdAndChunkIndexBetween" resultMap="knowledgeChunkResultMap">
+        SELECT id, knowledge_base_id, document_id, chunk_index, content, page_no,
+               section_title, char_count, token_count, created_at
+        FROM knowledge_chunk
+        WHERE document_id = #{documentId}
+          AND chunk_index BETWEEN #{fromIndex} AND #{toIndex}
+        ORDER BY chunk_index ASC
+    </select>
+
     <select id="findByIds" resultMap="knowledgeChunkResultMap">
         SELECT id, knowledge_base_id, document_id, chunk_index, content, page_no,
                section_title, char_count, token_count, created_at

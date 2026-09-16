@@ -15,7 +15,8 @@ public record AgentProperties(
         boolean enabled,
         @Min(1) int maxToolCalls,
         @NotNull Duration maxDuration,
-        @Valid @NotNull KnowledgeSearch knowledgeSearch) {
+        @Valid @NotNull KnowledgeSearch knowledgeSearch,
+        @Valid @NotNull DocumentContext documentContext) {
 
     public AgentProperties {
         if (maxDuration != null && (maxDuration.isZero() || maxDuration.isNegative())) {
@@ -26,5 +27,10 @@ public record AgentProperties(
     public record KnowledgeSearch(
             @NotNull RetrieverType retriever,
             @Min(1) int topK) {
+    }
+
+    public record DocumentContext(
+            @Min(0) int beforeChunks,
+            @Min(0) int afterChunks) {
     }
 }

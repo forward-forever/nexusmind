@@ -37,12 +37,15 @@ info:
 
 nexusmind:
   agent:
-    enabled: true
+    enabled: false
     max-tool-calls: 5
     max-duration: 30s
     knowledge-search:
       retriever: DENSE
       top-k: 5
+    document-context:
+      before-chunks: 1
+      after-chunks: 1
   dataset-resolver:
     enabled: false
   evaluation:

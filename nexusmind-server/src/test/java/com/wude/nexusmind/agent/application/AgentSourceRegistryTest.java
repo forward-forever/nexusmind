@@ -17,6 +17,18 @@ class AgentSourceRegistryTest {
         assertThat(registry.register(hit(200L)).sourceId()).isEqualTo("S2");
         assertThat(registry.snapshot()).extracting(source -> source.chunkId())
                 .containsExactly(100L, 200L);
+        assertThat(registry.resolveChunkId("S1")).contains(100L);
+        assertThat(registry.resolveChunkId("S99")).isEmpty();
+    }
+
+    @Test
+    void sourceIdsCannotResolveAcrossRunScopedRegistries() {
+        AgentSourceRegistry firstRun = new AgentSourceRegistry();
+        AgentSourceRegistry secondRun = new AgentSourceRegistry();
+        firstRun.register(hit(100L));
+
+        assertThat(firstRun.resolveChunkId("S1")).contains(100L);
+        assertThat(secondRun.resolveChunkId("S1")).isEmpty();
     }
 
     private static RetrievalHit hit(long chunkId) {

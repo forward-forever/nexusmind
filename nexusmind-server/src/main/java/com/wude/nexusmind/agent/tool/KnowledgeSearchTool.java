@@ -43,7 +43,9 @@ public final class KnowledgeSearchTool {
             description = "Search the currently selected NexusMind knowledge base for information relevant "
                     + "to the user's question. Use this tool when the answer depends on documents stored "
                     + "in the knowledge base or when the user explicitly asks for information from the "
-                    + "knowledge base. Do not use it for casual conversation or questions that can be "
+                    + "knowledge base. Search first when knowledge-base information is needed. Results "
+                    + "contain source IDs that can later be passed to get_document_context when surrounding "
+                    + "context is needed. Do not use it for casual conversation or questions that can be "
                     + "answered without the knowledge base.")
     public KnowledgeSearchToolResult search(
             @ToolParam(description = "A concise search query describing the needed knowledge") String query,

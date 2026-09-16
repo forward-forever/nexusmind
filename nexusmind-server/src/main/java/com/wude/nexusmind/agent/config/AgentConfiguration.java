@@ -1,10 +1,14 @@
 package com.wude.nexusmind.agent.config;
 
 import com.wude.nexusmind.agent.application.AgentModelTurnStreamer;
+import com.wude.nexusmind.agent.application.DocumentContextService;
 import com.wude.nexusmind.agent.application.SpringAiAgentModelTurnStreamer;
 import com.wude.nexusmind.agent.prompt.AgentPromptFactory;
 import com.wude.nexusmind.agent.tool.AgentToolSet;
+import com.wude.nexusmind.agent.tool.DocumentContextTool;
 import com.wude.nexusmind.agent.tool.KnowledgeSearchTool;
+import com.wude.nexusmind.knowledge.mapper.KnowledgeChunkMapper;
+import com.wude.nexusmind.knowledge.mapper.KnowledgeDocumentMapper;
 import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.model.tool.ToolCallingManager;
@@ -30,8 +34,23 @@ public class AgentConfiguration {
 
     @Bean
     @ConditionalOnProperty(name = "nexusmind.agent.enabled", havingValue = "true")
-    AgentToolSet agentToolSet(KnowledgeSearchTool knowledgeSearchTool) {
-        return new AgentToolSet(knowledgeSearchTool);
+    DocumentContextService documentContextService(KnowledgeChunkMapper chunkMapper,
+                                                   KnowledgeDocumentMapper documentMapper) {
+        return new DocumentContextService(chunkMapper, documentMapper);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "nexusmind.agent.enabled", havingValue = "true")
+    DocumentContextTool documentContextTool(DocumentContextService contextService,
+                                            AgentProperties properties) {
+        return new DocumentContextTool(contextService, properties);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "nexusmind.agent.enabled", havingValue = "true")
+    AgentToolSet agentToolSet(KnowledgeSearchTool knowledgeSearchTool,
+                              DocumentContextTool documentContextTool) {
+        return new AgentToolSet(knowledgeSearchTool, documentContextTool);
     }
 
     @Bean(name = "agentToolCallingManager")
