@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import DocumentPanel from '@/components/DocumentPanel.vue'
+import AgentChatPanel from '@/components/AgentChatPanel.vue'
 import KnowledgeBasePanel from '@/components/KnowledgeBasePanel.vue'
 import RagChatPanel from '@/components/RagChatPanel.vue'
 import RetrievalDebugPanel from '@/components/RetrievalDebugPanel.vue'
@@ -184,7 +185,7 @@ function showNotice(kind: NoticeKind, message: string): void {
           <p>AI Knowledge & Agent Platform</p>
         </div>
       </div>
-      <div class="version-label"><span></span> V2 · Retrieval Quality</div>
+      <div class="version-label"><span></span> V3 · Agent</div>
     </header>
 
     <div v-if="notice" class="notice" :data-kind="notice.kind" role="status">
@@ -233,6 +234,13 @@ function showNotice(kind: NoticeKind, message: string): void {
             :ready="hasIndexedDocument"
           />
 
+          <AgentChatPanel
+            :key="`agent-${selectedKnowledgeBase.id}`"
+            :knowledge-base-id="selectedKnowledgeBase.id"
+            :knowledge-base-name="selectedKnowledgeBase.name"
+            :ready="hasIndexedDocument"
+          />
+
           <RetrievalDebugPanel
             :key="`retrieval-${selectedKnowledgeBase.id}`"
             :knowledge-base-id="selectedKnowledgeBase.id"
@@ -241,7 +249,7 @@ function showNotice(kind: NoticeKind, message: string): void {
           />
         </template>
         <section v-else class="empty-workspace">
-          <p class="eyebrow">NexusMind V2</p>
+          <p class="eyebrow">NexusMind V3</p>
           <h2>Create a Knowledge Base to begin</h2>
           <p>Upload, process, index, and ask grounded questions—all from this page.</p>
         </section>

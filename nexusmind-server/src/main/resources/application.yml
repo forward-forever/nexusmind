@@ -48,6 +48,8 @@ nexusmind:
       after-chunks: 1
     memory:
       max-messages: 12
+  agent-evaluation:
+    enabled: false
   dataset-resolver:
     enabled: false
   evaluation:
