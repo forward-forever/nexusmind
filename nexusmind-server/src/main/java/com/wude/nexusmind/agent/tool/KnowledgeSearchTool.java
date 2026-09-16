@@ -60,7 +60,8 @@ public final class KnowledgeSearchTool {
         String invocationId = UUID.randomUUID().toString();
         runContext.ensureTimeRemaining();
         runContext.publish(AgentStreamEvent.toolStart(
-                runContext.runId(), invocationId, TOOL_NAME, Map.of("query", normalizedQuery)));
+                runContext.runId(), runContext.sessionId(), invocationId, TOOL_NAME,
+                Map.of("query", normalizedQuery)));
         long startedAt = System.nanoTime();
 
         try {
@@ -78,7 +79,8 @@ public final class KnowledgeSearchTool {
                     .toList();
             long durationMs = elapsedMillis(startedAt);
             runContext.publish(AgentStreamEvent.toolResult(
-                    runContext.runId(), invocationId, TOOL_NAME, durationMs, items.size(), sources));
+                    runContext.runId(), runContext.sessionId(), invocationId, TOOL_NAME,
+                    durationMs, items.size(), sources));
             log.info("Agent tool completed: runId={}, toolName={}, knowledgeBaseId={}, retrieverType={}, "
                             + "resultCount={}, durationMs={}",
                     runContext.runId(), TOOL_NAME, knowledgeBaseId,
@@ -86,7 +88,7 @@ public final class KnowledgeSearchTool {
             return new KnowledgeSearchToolResult(!items.isEmpty(), normalizedQuery, items);
         } catch (RuntimeException error) {
             runContext.publish(AgentStreamEvent.toolError(
-                    runContext.runId(), invocationId, TOOL_NAME,
+                    runContext.runId(), runContext.sessionId(), invocationId, TOOL_NAME,
                     "KNOWLEDGE_SEARCH_FAILED", "知识库搜索失败，请稍后重试"));
             log.error("Agent tool failed: runId={}, toolName={}, knowledgeBaseId={}, retrieverType={}, "
                             + "durationMs={}, errorType={}",

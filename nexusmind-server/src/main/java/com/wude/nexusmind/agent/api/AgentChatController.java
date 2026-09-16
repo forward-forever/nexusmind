@@ -31,7 +31,7 @@ public class AgentChatController {
     public Flux<ServerSentEvent<AgentStreamEvent>> chat(
             @PathVariable long knowledgeBaseId,
             @Valid @RequestBody AgentChatRequest request) {
-        return agentChatService.chat(knowledgeBaseId, request.message())
+        return agentChatService.chat(knowledgeBaseId, request.sessionId(), request.message())
                 .map(event -> ServerSentEvent.builder(event)
                         .event(event.type())
                         .build());

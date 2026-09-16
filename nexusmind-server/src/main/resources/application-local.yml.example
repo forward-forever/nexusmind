@@ -38,7 +38,7 @@ spring:
     clean-disabled: true
 
 mybatis:
-  mapper-locations: classpath*:mapper/knowledge/*.xml
+  mapper-locations: classpath*:mapper/**/*.xml
   configuration:
     map-underscore-to-camel-case: true
     default-enum-type-handler: org.apache.ibatis.type.EnumTypeHandler
@@ -54,6 +54,8 @@ nexusmind:
     document-context:
       before-chunks: ${NEXUSMIND_AGENT_CONTEXT_BEFORE_CHUNKS:1}
       after-chunks: ${NEXUSMIND_AGENT_CONTEXT_AFTER_CHUNKS:1}
+    memory:
+      max-messages: ${NEXUSMIND_AGENT_MEMORY_MAX_MESSAGES:12}
   vector:
     enabled: true
   rag:

@@ -186,7 +186,8 @@ class DocumentContextToolTest {
                 true, 5, Duration.ofSeconds(30),
                 new AgentProperties.KnowledgeSearch(
                         com.wude.nexusmind.rag.retrieval.RetrieverType.DENSE, 5),
-                new AgentProperties.DocumentContext(1, 1));
+                new AgentProperties.DocumentContext(1, 1),
+                new AgentProperties.Memory(12));
         DocumentContextTool tool = new DocumentContextTool(
                 new DocumentContextService(chunks, documents), properties);
         List<AgentStreamEvent> events = new ArrayList<>();

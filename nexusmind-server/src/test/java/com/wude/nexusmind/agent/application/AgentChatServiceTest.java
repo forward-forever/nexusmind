@@ -1,6 +1,9 @@
 package com.wude.nexusmind.agent.application;
 
 import com.wude.nexusmind.agent.config.AgentProperties;
+import com.wude.nexusmind.agent.memory.AgentConversationMemoryService;
+import com.wude.nexusmind.agent.memory.AgentSessionKnowledgeBaseMismatchException;
+import com.wude.nexusmind.agent.memory.AgentSessionNotFoundException;
 import com.wude.nexusmind.agent.prompt.AgentPromptFactory;
 import com.wude.nexusmind.agent.stream.AgentStreamEvent;
 import com.wude.nexusmind.agent.tool.AgentToolSet;
@@ -25,6 +28,7 @@ import com.wude.nexusmind.rag.retrieval.RetrieverType;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
@@ -46,7 +50,10 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -66,6 +73,10 @@ class AgentChatServiceTest {
                 .containsExactly("assistant_delta", "assistant_delta", "done");
         assertThat(events.get(2).toolCallCount()).isZero();
         assertThat(events.get(2).modelTurnCount()).isEqualTo(1);
+        assertThat(events).extracting(AgentStreamEvent::sessionId)
+                .containsOnly("11111111-1111-1111-1111-111111111111");
+        verify(fixture.memory).appendSuccessfulTurn(
+                "11111111-1111-1111-1111-111111111111", "你好，你是谁？", "你好");
         verify(fixture.retrieval, org.mockito.Mockito.never()).retrieve(
                 org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyString(),
@@ -93,6 +104,49 @@ class AgentChatServiceTest {
         assertThat(fixture.streamer.prompts).hasSize(2);
         assertThat(fixture.streamer.prompts.get(1).getInstructions())
                 .anyMatch(ToolResponseMessage.class::isInstance);
+        verify(fixture.memory).appendSuccessfulTurn(
+                "11111111-1111-1111-1111-111111111111",
+                "根据当前知识库解释 MVCC 的 Read View。",
+                "Read View 决定可见性。[S1]");
+    }
+
+    @Test
+    void persistsOnlyFinalModelTurnInsteadOfPreToolNarration() {
+        AssistantMessage preTool = AssistantMessage.builder()
+                .content("我先搜索一下。")
+                .toolCalls(List.of(call("call-1", "MVCC")))
+                .build();
+        Fixture fixture = fixture(5, Clock.systemUTC(), false,
+                Flux.just(response(preTool)),
+                Flux.just(text("最终回答。[S1]")));
+
+        fixture.service.chat(33L, "question").collectList().block(Duration.ofSeconds(2));
+
+        verify(fixture.memory).appendSuccessfulTurn(
+                "11111111-1111-1111-1111-111111111111", "question", "最终回答。[S1]");
+    }
+
+    @Test
+    void unknownOrCrossKnowledgeBaseSessionFailsBeforeModelInvocation() {
+        String unknown = "33333333-3333-3333-3333-333333333333";
+        Fixture unknownFixture = fixture(5, Clock.systemUTC(), false,
+                Flux.just(text("must not execute")));
+        when(unknownFixture.memory.resolveSession(33L, unknown))
+                .thenThrow(new AgentSessionNotFoundException(unknown));
+
+        assertThatThrownBy(() -> unknownFixture.service.chat(33L, unknown, "question"))
+                .isInstanceOf(AgentSessionNotFoundException.class);
+        assertThat(unknownFixture.streamer.prompts).isEmpty();
+
+        String foreign = "44444444-4444-4444-4444-444444444444";
+        Fixture crossKbFixture = fixture(5, Clock.systemUTC(), false,
+                Flux.just(text("must not execute")));
+        when(crossKbFixture.memory.resolveSession(33L, foreign))
+                .thenThrow(new AgentSessionKnowledgeBaseMismatchException(foreign, 33L));
+
+        assertThatThrownBy(() -> crossKbFixture.service.chat(33L, foreign, "question"))
+                .isInstanceOf(AgentSessionKnowledgeBaseMismatchException.class);
+        assertThat(crossKbFixture.streamer.prompts).isEmpty();
     }
 
     @Test
@@ -147,6 +201,45 @@ class AgentChatServiceTest {
         assertThat(done.sources()).extracting(source -> source.sourceId())
                 .containsExactly("S1", "S2", "S3");
         assertThat(fixture.streamer.prompts).hasSize(3);
+        verify(fixture.memory).appendSuccessfulTurn(
+                "11111111-1111-1111-1111-111111111111",
+                "搜索并查看附近上下文",
+                "RC 每次读取创建 Read View，RR 通常复用事务级 Read View。[S1][S3]");
+    }
+
+    @Test
+    void sameSessionLoadsHistoryBeforeCurrentUserAndDoesNotDuplicateItAcrossToolTurns() {
+        String sessionId = "22222222-2222-2222-2222-222222222222";
+        Fixture fixture = fixture(5, Clock.systemUTC(), false,
+                Flux.just(toolCalls(call("call-1", "RR Read View"))),
+                Flux.just(toolCalls(contextCall("call-2", "S1"))),
+                Flux.just(text("第二种隔离级别是 RR。[S1]")));
+        fixture.stubVisibleContext();
+        when(fixture.memory.resolveSession(33L, sessionId)).thenReturn(sessionId);
+        when(fixture.memory.loadRecentMessages(sessionId, 12)).thenReturn(List.of(
+                new UserMessage("请解释 RC 和 RR。"),
+                new AssistantMessage("第一种是 RC，第二种是 RR。")));
+
+        List<AgentStreamEvent> events = fixture.service.chat(
+                        33L, sessionId, "你刚才说的第二种是什么？")
+                .collectList().block(Duration.ofSeconds(2));
+
+        assertThat(events).isNotNull();
+        assertThat(events.get(events.size() - 1).modelTurnCount()).isEqualTo(3);
+        assertThat(fixture.streamer.prompts).hasSize(3);
+        assertThat(fixture.streamer.prompts.get(0).getInstructions())
+                .extracting(message -> message.getText())
+                .containsExactly(
+                        new AgentPromptFactory().systemPrompt(),
+                        "请解释 RC 和 RR。",
+                        "第一种是 RC，第二种是 RR。",
+                        "你刚才说的第二种是什么？");
+        long historicalQuestionOccurrences = fixture.streamer.prompts.get(2).getInstructions().stream()
+                .filter(message -> "请解释 RC 和 RR。".equals(message.getText()))
+                .count();
+        assertThat(historicalQuestionOccurrences).isEqualTo(1);
+        verify(fixture.memory).appendSuccessfulTurn(
+                sessionId, "你刚才说的第二种是什么？", "第二种隔离级别是 RR。[S1]");
     }
 
     @Test
@@ -181,6 +274,10 @@ class AgentChatServiceTest {
                 .containsExactly("tool_start", "tool_result", "tool_start", "tool_error", "error");
         assertThat(events.get(4).code()).isEqualTo("AGENT_TOOL_ERROR");
         assertThat(events).noneMatch(event -> "done".equals(event.type()));
+        verify(fixture.memory, never()).appendSuccessfulTurn(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test
@@ -203,6 +300,10 @@ class AgentChatServiceTest {
                 org.mockito.ArgumentMatchers.eq(33L),
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.eq(5));
+        verify(fixture.memory, never()).appendSuccessfulTurn(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test
@@ -224,6 +325,10 @@ class AgentChatServiceTest {
                 org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyInt());
+        verify(fixture.memory, never()).appendSuccessfulTurn(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test
@@ -238,6 +343,29 @@ class AgentChatServiceTest {
         assertThat(events).extracting(AgentStreamEvent::type)
                 .containsExactly("tool_start", "tool_error", "error");
         assertThat(events.get(2).code()).isEqualTo("AGENT_TOOL_ERROR");
+        assertThat(events).noneMatch(event -> "done".equals(event.type()));
+        verify(fixture.memory, never()).appendSuccessfulTurn(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void persistenceFailureEmitsErrorAfterDeltaAndNeverDone() {
+        Fixture fixture = fixture(5, Clock.systemUTC(), false,
+                Flux.just(text("完整回答")));
+        doThrow(new IllegalStateException("memory write failed"))
+                .when(fixture.memory).appendSuccessfulTurn(
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString());
+
+        List<AgentStreamEvent> events = fixture.service.chat(33L, "question")
+                .collectList().block(Duration.ofSeconds(2));
+
+        assertThat(events).isNotNull();
+        assertThat(events).extracting(AgentStreamEvent::type)
+                .containsExactly("assistant_delta", "error");
         assertThat(events).noneMatch(event -> "done".equals(event.type()));
     }
 
@@ -264,7 +392,8 @@ class AgentChatServiceTest {
         AgentProperties properties = new AgentProperties(
                 true, maxToolCalls, Duration.ofSeconds(30),
                 new AgentProperties.KnowledgeSearch(RetrieverType.DENSE, 5),
-                new AgentProperties.DocumentContext(1, 1));
+                new AgentProperties.DocumentContext(1, 1),
+                new AgentProperties.Memory(12));
         KnowledgeSearchTool tool = new KnowledgeSearchTool(registry, properties);
         KnowledgeChunkMapper chunks = mock(KnowledgeChunkMapper.class);
         KnowledgeDocumentMapper documents = mock(KnowledgeDocumentMapper.class);
@@ -276,17 +405,22 @@ class AgentChatServiceTest {
         knowledgeBase.setId(33L);
         knowledgeBase.setStatus(KnowledgeBaseStatus.ACTIVE);
         when(knowledgeBaseService.get(33L)).thenReturn(knowledgeBase);
+        AgentConversationMemoryService memory = mock(AgentConversationMemoryService.class);
+        when(memory.resolveSession(33L, null)).thenReturn("11111111-1111-1111-1111-111111111111");
+        when(memory.loadRecentMessages("11111111-1111-1111-1111-111111111111", 12))
+                .thenReturn(List.of());
         AgentChatService service = new AgentChatService(
                 knowledgeBaseService,
                 streamer,
                 toolCallingManager(),
                 new AgentToolSet(tool, contextTool),
                 new AgentPromptFactory(),
+                memory,
                 properties,
                 new RagChatProperties("qwen3.5-flash", 0.2, 5, 10, 12_000,
                         Duration.ofSeconds(120), Duration.ofSeconds(150)),
                 clock);
-        return new Fixture(service, retrieval, streamer, chunks, documents);
+        return new Fixture(service, retrieval, streamer, chunks, documents, memory);
     }
 
     private static ToolCallingManager toolCallingManager() {
@@ -333,7 +467,8 @@ class AgentChatServiceTest {
                            RetrievalService retrieval,
                            QueueModelTurnStreamer streamer,
                            KnowledgeChunkMapper chunks,
-                           KnowledgeDocumentMapper documents) {
+                           KnowledgeDocumentMapper documents,
+                           AgentConversationMemoryService memory) {
 
         void stubVisibleContext() {
             KnowledgeChunk target = chunk(100L, 1, "target");

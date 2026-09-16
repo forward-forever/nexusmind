@@ -3,6 +3,7 @@ package com.wude.nexusmind.agent.application;
 import com.wude.nexusmind.agent.api.AgentChatController;
 import com.wude.nexusmind.agent.api.AgentChatRequest;
 import com.wude.nexusmind.agent.config.AgentProperties;
+import com.wude.nexusmind.agent.memory.AgentConversationMemoryService;
 import com.wude.nexusmind.agent.prompt.AgentPromptFactory;
 import com.wude.nexusmind.agent.stream.AgentStreamEvent;
 import com.wude.nexusmind.agent.tool.AgentToolSet;
@@ -82,7 +83,8 @@ class AgentToolCallingLocalIT {
         AgentProperties properties = new AgentProperties(
                 true, 5, Duration.ofSeconds(30),
                 new AgentProperties.KnowledgeSearch(RetrieverType.DENSE, 5),
-                new AgentProperties.DocumentContext(1, 1));
+                new AgentProperties.DocumentContext(1, 1),
+                new AgentProperties.Memory(12));
         KnowledgeSearchTool tool = new KnowledgeSearchTool(registry, properties);
         KnowledgeChunkMapper chunks = mock(KnowledgeChunkMapper.class);
         KnowledgeDocumentMapper documents = mock(KnowledgeDocumentMapper.class);
@@ -103,6 +105,10 @@ class AgentToolCallingLocalIT {
         KnowledgeBase knowledgeBase = new KnowledgeBase();
         knowledgeBase.setStatus(KnowledgeBaseStatus.ACTIVE);
         when(knowledgeBaseService.get(33L)).thenReturn(knowledgeBase);
+        AgentConversationMemoryService memory = mock(AgentConversationMemoryService.class);
+        when(memory.resolveSession(33L, null)).thenReturn("11111111-1111-1111-1111-111111111111");
+        when(memory.loadRecentMessages("11111111-1111-1111-1111-111111111111", 12))
+                .thenReturn(List.of());
         ToolCallingManager manager = ToolCallingManager.builder()
                 .toolExecutionExceptionProcessor(new DefaultToolExecutionExceptionProcessor(true))
                 .build();
@@ -112,13 +118,14 @@ class AgentToolCallingLocalIT {
                 manager,
                 new AgentToolSet(tool, contextTool),
                 new AgentPromptFactory(),
+                memory,
                 properties,
                 new RagChatProperties("qwen3.5-flash", 0.2, 5, 10, 12_000,
                         Duration.ofSeconds(120), Duration.ofSeconds(150)),
                 Clock.systemUTC());
 
         List<ServerSentEvent<AgentStreamEvent>> events = new AgentChatController(service)
-                .chat(33L, new AgentChatRequest("根据知识库解释 MVCC"))
+                .chat(33L, new AgentChatRequest(null, "根据知识库解释 MVCC"))
                 .collectList().block(Duration.ofSeconds(2));
 
         assertThat(events).isNotNull();

@@ -52,7 +52,7 @@ public final class DocumentContextTool {
         String invocationId = UUID.randomUUID().toString();
         runContext.ensureTimeRemaining();
         runContext.publish(AgentStreamEvent.toolStart(
-                runContext.runId(), invocationId, TOOL_NAME,
+                runContext.runId(), runContext.sessionId(), invocationId, TOOL_NAME,
                 Map.of("sourceId", normalizedSourceId)));
         long startedAt = System.nanoTime();
 
@@ -67,7 +67,7 @@ public final class DocumentContextTool {
                     .toList();
             long durationMs = elapsedMillis(startedAt);
             runContext.publish(AgentStreamEvent.toolResult(
-                    runContext.runId(), invocationId, TOOL_NAME, durationMs,
+                    runContext.runId(), runContext.sessionId(), invocationId, TOOL_NAME, durationMs,
                     result.items().size(), sources));
             log.info("Agent tool completed: runId={}, toolName={}, knowledgeBaseId={}, found={}, "
                             + "resultCount={}, durationMs={}",
@@ -76,7 +76,7 @@ public final class DocumentContextTool {
             return result;
         } catch (RuntimeException error) {
             runContext.publish(AgentStreamEvent.toolError(
-                    runContext.runId(), invocationId, TOOL_NAME,
+                    runContext.runId(), runContext.sessionId(), invocationId, TOOL_NAME,
                     "DOCUMENT_CONTEXT_FAILED", "文档上下文加载失败，请稍后重试"));
             log.error("Agent tool failed: runId={}, toolName={}, knowledgeBaseId={}, durationMs={}, "
                             + "errorType={}",

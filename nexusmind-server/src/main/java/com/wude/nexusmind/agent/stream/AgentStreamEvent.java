@@ -8,6 +8,7 @@ import java.util.Map;
 public record AgentStreamEvent(
         String type,
         String runId,
+        String sessionId,
         String content,
         String invocationId,
         String toolName,
@@ -25,50 +26,54 @@ public record AgentStreamEvent(
         sources = sources == null ? null : List.copyOf(sources);
     }
 
-    public static AgentStreamEvent assistantDelta(String runId, String content) {
-        return new AgentStreamEvent("assistant_delta", runId, content, null, null,
+    public static AgentStreamEvent assistantDelta(String runId, String sessionId, String content) {
+        return new AgentStreamEvent("assistant_delta", runId, sessionId, content, null, null,
                 null, null, null, null, null, null, null, null);
     }
 
     public static AgentStreamEvent toolStart(String runId,
+                                             String sessionId,
                                              String invocationId,
                                              String toolName,
                                              Map<String, Object> arguments) {
-        return new AgentStreamEvent("tool_start", runId, null, invocationId, toolName,
+        return new AgentStreamEvent("tool_start", runId, sessionId, null, invocationId, toolName,
                 arguments, null, null, null, null, null, null, null);
     }
 
     public static AgentStreamEvent toolResult(String runId,
+                                              String sessionId,
                                               String invocationId,
                                               String toolName,
                                               long durationMs,
                                               int resultCount,
                                               List<AgentSource> sources) {
-        return new AgentStreamEvent("tool_result", runId, null, invocationId, toolName,
+        return new AgentStreamEvent("tool_result", runId, sessionId, null, invocationId, toolName,
                 null, durationMs, resultCount, sources, null, null, null, null);
     }
 
     public static AgentStreamEvent toolError(String runId,
+                                             String sessionId,
                                              String invocationId,
                                              String toolName,
                                              String code,
                                              String message) {
-        return new AgentStreamEvent("tool_error", runId, null, invocationId, toolName,
+        return new AgentStreamEvent("tool_error", runId, sessionId, null, invocationId, toolName,
                 null, null, null, null, code, message, null, null);
     }
 
     public static AgentStreamEvent done(String runId,
+                                        String sessionId,
                                         int toolCallCount,
                                         int modelTurnCount,
                                         long durationMs,
                                         List<AgentSource> sources) {
-        return new AgentStreamEvent("done", runId, null, null, null,
+        return new AgentStreamEvent("done", runId, sessionId, null, null, null,
                 null, durationMs, null, sources, null, null,
                 toolCallCount, modelTurnCount);
     }
 
-    public static AgentStreamEvent error(String runId, String code, String message) {
-        return new AgentStreamEvent("error", runId, null, null, null,
+    public static AgentStreamEvent error(String runId, String sessionId, String code, String message) {
+        return new AgentStreamEvent("error", runId, sessionId, null, null, null,
                 null, null, null, null, code, message, null, null);
     }
 }

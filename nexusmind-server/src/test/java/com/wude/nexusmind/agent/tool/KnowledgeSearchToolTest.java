@@ -124,7 +124,8 @@ class KnowledgeSearchToolTest {
                         5, hits));
         AgentProperties properties = new AgentProperties(
                 true, 5, Duration.ofSeconds(30), new AgentProperties.KnowledgeSearch(type, 5),
-                new AgentProperties.DocumentContext(1, 1));
+                new AgentProperties.DocumentContext(1, 1),
+                new AgentProperties.Memory(12));
         KnowledgeSearchTool tool = new KnowledgeSearchTool(
                 new RetrievalServiceRegistry(List.of(retrieval)), properties);
         List<AgentStreamEvent> events = new ArrayList<>();

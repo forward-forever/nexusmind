@@ -46,6 +46,8 @@ nexusmind:
     document-context:
       before-chunks: 1
       after-chunks: 1
+    memory:
+      max-messages: 12
   dataset-resolver:
     enabled: false
   evaluation:

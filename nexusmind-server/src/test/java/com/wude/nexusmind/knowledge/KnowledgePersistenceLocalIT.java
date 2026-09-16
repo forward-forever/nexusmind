@@ -64,7 +64,7 @@ class KnowledgePersistenceLocalIT {
     @Test
     void mapperCrudBatchInsertAndTransactionRollbackWork() {
         assertThat(flyway.info().current()).isNotNull();
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("2");
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("3");
 
         Long knowledgeBaseId = null;
         Long documentId = null;

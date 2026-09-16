@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wude.nexusmind.agent.memory.mapper.AgentSessionMapper">
+
+    <resultMap id="agentSessionResultMap" type="com.wude.nexusmind.agent.memory.domain.AgentSessionEntity">
+        <id property="sessionId" column="session_id"/>
+        <result property="knowledgeBaseId" column="knowledge_base_id"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="insert">
+        INSERT INTO agent_session (session_id, knowledge_base_id)
+        VALUES (#{sessionId}, #{knowledgeBaseId})
+    </insert>
+
+    <select id="findById" resultMap="agentSessionResultMap">
+        SELECT session_id, knowledge_base_id, created_at, updated_at
+        FROM agent_session
+        WHERE session_id = #{sessionId}
+    </select>
+
+    <update id="touch">
+        UPDATE agent_session
+        SET updated_at = CURRENT_TIMESTAMP(3)
+        WHERE session_id = #{sessionId}
+    </update>
+
+</mapper>

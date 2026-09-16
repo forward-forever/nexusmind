@@ -19,7 +19,7 @@ class AgentPolicyValidatorTest {
         AgentProperties properties = new AgentProperties(
                 true, 5, Duration.ofSeconds(30),
                 new AgentProperties.KnowledgeSearch(RetrieverType.DENSE, 21),
-                contextPolicy());
+                contextPolicy(), memoryPolicy());
 
         assertThatThrownBy(() -> new AgentPolicyValidator(
                 properties, registry()))
@@ -32,7 +32,7 @@ class AgentPolicyValidatorTest {
         AgentProperties properties = new AgentProperties(
                 true, 5, Duration.ofSeconds(30),
                 new AgentProperties.KnowledgeSearch(RetrieverType.BM25, 5),
-                contextPolicy());
+                contextPolicy(), memoryPolicy());
 
         assertThatThrownBy(() -> new AgentPolicyValidator(
                 properties, registry()))
@@ -45,7 +45,7 @@ class AgentPolicyValidatorTest {
         assertThatThrownBy(() -> new AgentProperties(
                 true, 5, Duration.ZERO,
                 new AgentProperties.KnowledgeSearch(RetrieverType.DENSE, 5),
-                contextPolicy()))
+                contextPolicy(), memoryPolicy()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("duration must be positive");
     }
@@ -58,6 +58,10 @@ class AgentPolicyValidatorTest {
 
     private static AgentProperties.DocumentContext contextPolicy() {
         return new AgentProperties.DocumentContext(1, 1);
+    }
+
+    private static AgentProperties.Memory memoryPolicy() {
+        return new AgentProperties.Memory(12);
     }
 
 }

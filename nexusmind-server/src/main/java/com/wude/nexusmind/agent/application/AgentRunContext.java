@@ -12,7 +12,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class AgentRunContext {
 
     private final String runId;
+    private final String sessionId;
     private final long knowledgeBaseId;
+    private final int historyMessageCount;
     private final Instant startedAt;
     private final Instant deadline;
     private final Clock clock;
@@ -25,16 +27,40 @@ public final class AgentRunContext {
                            Duration maxDuration,
                            Clock clock,
                            AgentToolEventPublisher eventPublisher) {
-        this(UUID.randomUUID().toString(), knowledgeBaseId, maxDuration, clock, eventPublisher);
+        this(UUID.randomUUID().toString(), UUID.randomUUID().toString(), knowledgeBaseId,
+                0, maxDuration, clock, eventPublisher);
+    }
+
+    public AgentRunContext(String sessionId,
+                           long knowledgeBaseId,
+                           Duration maxDuration,
+                           Clock clock,
+                           AgentToolEventPublisher eventPublisher) {
+        this(UUID.randomUUID().toString(), sessionId, knowledgeBaseId,
+                0, maxDuration, clock, eventPublisher);
+    }
+
+    public AgentRunContext(String sessionId,
+                           long knowledgeBaseId,
+                           int historyMessageCount,
+                           Duration maxDuration,
+                           Clock clock,
+                           AgentToolEventPublisher eventPublisher) {
+        this(UUID.randomUUID().toString(), sessionId, knowledgeBaseId,
+                historyMessageCount, maxDuration, clock, eventPublisher);
     }
 
     AgentRunContext(String runId,
+                    String sessionId,
                     long knowledgeBaseId,
+                    int historyMessageCount,
                     Duration maxDuration,
                     Clock clock,
                     AgentToolEventPublisher eventPublisher) {
         this.runId = runId;
+        this.sessionId = sessionId;
         this.knowledgeBaseId = knowledgeBaseId;
+        this.historyMessageCount = historyMessageCount;
         this.clock = clock;
         this.eventPublisher = eventPublisher;
         this.startedAt = clock.instant();
@@ -83,8 +109,16 @@ public final class AgentRunContext {
         return runId;
     }
 
+    public String sessionId() {
+        return sessionId;
+    }
+
     public long knowledgeBaseId() {
         return knowledgeBaseId;
+    }
+
+    public int historyMessageCount() {
+        return historyMessageCount;
     }
 
     public int toolCallCount() {

@@ -4,6 +4,7 @@ import com.wude.nexusmind.agent.application.AgentModelTurnStreamer;
 import com.wude.nexusmind.agent.application.DocumentContextService;
 import com.wude.nexusmind.agent.application.SpringAiAgentModelTurnStreamer;
 import com.wude.nexusmind.agent.prompt.AgentPromptFactory;
+import com.wude.nexusmind.agent.memory.HistoricalCitationSanitizer;
 import com.wude.nexusmind.agent.tool.AgentToolSet;
 import com.wude.nexusmind.agent.tool.DocumentContextTool;
 import com.wude.nexusmind.agent.tool.KnowledgeSearchTool;
@@ -73,6 +74,11 @@ public class AgentConfiguration {
     @ConditionalOnProperty(name = "nexusmind.agent.enabled", havingValue = "true")
     AgentPromptFactory agentPromptFactory() {
         return new AgentPromptFactory();
+    }
+
+    @Bean
+    HistoricalCitationSanitizer historicalCitationSanitizer() {
+        return new HistoricalCitationSanitizer();
     }
 
     @Bean

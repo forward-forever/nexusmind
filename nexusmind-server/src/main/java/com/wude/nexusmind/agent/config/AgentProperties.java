@@ -16,7 +16,8 @@ public record AgentProperties(
         @Min(1) int maxToolCalls,
         @NotNull Duration maxDuration,
         @Valid @NotNull KnowledgeSearch knowledgeSearch,
-        @Valid @NotNull DocumentContext documentContext) {
+        @Valid @NotNull DocumentContext documentContext,
+        @Valid @NotNull Memory memory) {
 
     public AgentProperties {
         if (maxDuration != null && (maxDuration.isZero() || maxDuration.isNegative())) {
@@ -32,5 +33,8 @@ public record AgentProperties(
     public record DocumentContext(
             @Min(0) int beforeChunks,
             @Min(0) int afterChunks) {
+    }
+
+    public record Memory(@Min(1) int maxMessages) {
     }
 }
