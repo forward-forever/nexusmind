@@ -36,6 +36,13 @@ info:
     description: NexusMind AI Knowledge & Agent Platform
 
 nexusmind:
+  agent:
+    enabled: true
+    max-tool-calls: 5
+    max-duration: 30s
+    knowledge-search:
+      retriever: DENSE
+      top-k: 5
   dataset-resolver:
     enabled: false
   evaluation:

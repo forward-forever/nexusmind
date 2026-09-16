@@ -44,6 +44,13 @@ mybatis:
     default-enum-type-handler: org.apache.ibatis.type.EnumTypeHandler
 
 nexusmind:
+  agent:
+    enabled: ${NEXUSMIND_AGENT_ENABLED:true}
+    max-tool-calls: ${NEXUSMIND_AGENT_MAX_TOOL_CALLS:5}
+    max-duration: ${NEXUSMIND_AGENT_MAX_DURATION:30s}
+    knowledge-search:
+      retriever: ${NEXUSMIND_AGENT_RETRIEVER:DENSE}
+      top-k: ${NEXUSMIND_AGENT_TOP_K:5}
   vector:
     enabled: true
   rag:

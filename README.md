@@ -8,18 +8,20 @@ NexusMind 是一个个人 AI 应用项目，定位为 **AI Knowledge & Agent Pla
 
 ## 当前阶段
 
-V1 Basic RAG 与 V2 Retrieval Quality 均已完成。文档摄取、可重建检索索引、无状态流式 RAG、统一 Retrieval Evaluation 和单 Query Retrieval Debug 已形成完整闭环：
+V1 Basic RAG 与 V2 Retrieval Quality 均已完成并冻结。V3 Agent 已进入开发阶段，当前从最小、受控的 Tool Calling 基础开始：
 
 ```text
 Document Upload → Local Storage → Parser → Sliding Window Chunk → MySQL
 MySQL Chunk → Dense / BM25 → Application RRF → Cross-Encoder Rerank
 Question → Configured RetrievalService → Context → qwen3.5-flash → SSE Answer + Citation
 Browser → Knowledge Base → Upload → Process → Index → RAG + Retrieval Lab
+Agent → qwen3.5-flash tool decision → KnowledgeSearchTool → RetrievalService → final answer
 ```
 
 支持 PDF、Markdown 和 UTF-8 TXT。Web UI 可创建 Knowledge Base、管理 Document 的 Process/Index 阶段，通过 POST SSE 展示真实增量回答和稳定 Source ID Citation，并并排检查 DENSE、BM25、HYBRID_RRF、HYBRID_RERANK 的单 Query 结果与 provenance。
 
 V1 的完整启动和人工验收步骤见 [`docs/v1-demo.md`](docs/v1-demo.md)，V2 正式实验结论见 [`docs/v2-retrieval-quality.md`](docs/v2-retrieval-quality.md)。
+V3 当前的受控 Tool Calling 设计见 [`docs/agent-foundation.md`](docs/agent-foundation.md)。
 
 ## Retrieval Architecture
 
@@ -73,5 +75,5 @@ Query ──────────────────┤            ├�
   - Golden Dataset Evaluation
   - HitRate / Recall / MRR
   - Retrieval Debug Panel
-- V3 - Agent & Tool Calling（Planned）
+- V3 - Agent & Tool Calling（In Progress）
 - V4 - Production Engineering（Planned）
