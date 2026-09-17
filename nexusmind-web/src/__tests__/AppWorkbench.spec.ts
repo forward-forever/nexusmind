@@ -17,6 +17,8 @@ vi.mock('@/api/document', () => ({
   uploadDocument: vi.fn<() => void>(),
   processDocument: vi.fn<() => void>(),
   indexDocument: vi.fn<() => void>(),
+  getDocumentTask: vi.fn<() => void>(),
+  listActiveDocumentTasks: vi.fn<() => Promise<never[]>>().mockResolvedValue([]),
 }))
 
 const StatefulPanel = defineComponent({

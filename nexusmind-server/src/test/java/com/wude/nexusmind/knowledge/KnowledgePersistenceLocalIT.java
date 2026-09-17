@@ -30,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
                 "mybatis.configuration.log-impl=org.apache.ibatis.logging.stdout.StdOutImpl",
+                "nexusmind.document-task.worker-enabled=false",
                 "spring.ai.model.chat=none",
                 "spring.ai.model.embedding=none",
                 "nexusmind.vector.enabled=false",
@@ -64,7 +65,7 @@ class KnowledgePersistenceLocalIT {
     @Test
     void mapperCrudBatchInsertAndTransactionRollbackWork() {
         assertThat(flyway.info().current()).isNotNull();
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("3");
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("4");
 
         Long knowledgeBaseId = null;
         Long documentId = null;

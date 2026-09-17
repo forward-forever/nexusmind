@@ -1,5 +1,7 @@
 export type DocumentStatus = 'UPLOADED' | 'PROCESSING' | 'READY' | 'FAILED'
 export type DocumentIndexStatus = 'NOT_INDEXED' | 'INDEXING' | 'INDEXED' | 'FAILED'
+export type DocumentTaskType = 'PROCESS' | 'INDEX'
+export type DocumentTaskStatus = 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
 
 export interface DocumentSummary {
   id: number
@@ -25,4 +27,16 @@ export interface KnowledgeDocument extends DocumentSummary {
 export interface UploadDocumentResponse {
   document: KnowledgeDocument
   duplicate: boolean
+}
+
+export interface DocumentTask {
+  taskId: number
+  documentId: number
+  taskType: DocumentTaskType
+  status: DocumentTaskStatus
+  attemptCount: number
+  enqueuedAt: string
+  startedAt: string | null
+  finishedAt: string | null
+  lastError: string | null
 }

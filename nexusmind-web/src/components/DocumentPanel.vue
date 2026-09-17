@@ -1,20 +1,18 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { DocumentSummary } from '@/types/document'
+import type { DocumentSummary, DocumentTask } from '@/types/document'
 
 const props = defineProps<{
   documents: DocumentSummary[]
   loading: boolean
   uploadBusy: boolean
-  activeDocumentId: number | null
-  activeAction: 'process' | 'index' | 'prepare' | null
+  tasks: DocumentTask[]
 }>()
 
 const emit = defineEmits<{
   upload: [file: File]
   process: [document: DocumentSummary]
   index: [document: DocumentSummary]
-  prepare: [document: DocumentSummary]
 }>()
 
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -41,19 +39,24 @@ function canIndex(document: DocumentSummary): boolean {
   )
 }
 
-function canPrepare(document: DocumentSummary): boolean {
-  return canProcess(document) || canIndex(document)
+function currentTask(document: DocumentSummary): DocumentTask | undefined {
+  const candidates = props.tasks.filter((task) => task.documentId === document.id)
+  return candidates.find((task) => task.status === 'PENDING' || task.status === 'RUNNING')
+    ?? candidates.find((task) => task.status === 'FAILED' && (
+      (task.taskType === 'PROCESS' && document.status === 'FAILED')
+      || (task.taskType === 'INDEX' && document.indexStatus === 'FAILED')
+    ))
 }
 
-function isBusy(document: DocumentSummary): boolean {
-  return props.activeDocumentId === document.id
+function taskLabel(task: DocumentTask): string {
+  if (task.status === 'PENDING') return 'Queued'
+  if (task.status === 'RUNNING') return task.taskType === 'PROCESS' ? 'Processing…' : 'Indexing…'
+  return task.status === 'FAILED' ? 'Failed' : 'Succeeded'
 }
 
-function busyLabel(document: DocumentSummary): string {
-  if (!isBusy(document)) return ''
-  if (props.activeAction === 'process') return 'Processing…'
-  if (props.activeAction === 'index') return 'Indexing…'
-  return 'Preparing…'
+function hasActiveTask(document: DocumentSummary, type: DocumentTask['taskType']): boolean {
+  return props.tasks.some((task) => task.documentId === document.id && task.taskType === type
+    && (task.status === 'PENDING' || task.status === 'RUNNING'))
 }
 
 function formatBytes(bytes: number): string {
@@ -108,38 +111,32 @@ function formatBytes(bytes: number): string {
           <p v-if="document.indexErrorMessage" class="row-error">
             {{ document.indexErrorMessage }}
           </p>
+          <div v-if="currentTask(document)" class="document-task-summary" :data-status="currentTask(document)?.status.toLowerCase()">
+            <strong>{{ currentTask(document) && taskLabel(currentTask(document)!) }}</strong>
+            <span>Attempt {{ currentTask(document)?.attemptCount }}</span>
+            <span>Task #{{ currentTask(document)?.taskId }}</span>
+            <p v-if="currentTask(document)?.lastError" class="row-error">{{ currentTask(document)?.lastError }}</p>
+          </div>
         </div>
         <div class="document-actions">
-          <span v-if="isBusy(document)" class="working-label">{{ busyLabel(document) }}</span>
-          <template v-else>
-            <button
-              v-if="canProcess(document)"
-              class="button secondary small"
-              type="button"
-              :disabled="activeDocumentId !== null"
-              @click="emit('process', document)"
-            >
-              Process
-            </button>
-            <button
-              v-if="canIndex(document)"
-              class="button secondary small"
-              type="button"
-              :disabled="activeDocumentId !== null"
-              @click="emit('index', document)"
-            >
-              Index
-            </button>
-            <button
-              v-if="canPrepare(document)"
-              class="button quiet small"
-              type="button"
-              :disabled="activeDocumentId !== null"
-              @click="emit('prepare', document)"
-            >
-              Prepare for RAG
-            </button>
-          </template>
+          <button
+            v-if="canProcess(document)"
+            class="button secondary small"
+            type="button"
+            :disabled="hasActiveTask(document, 'PROCESS')"
+            @click="emit('process', document)"
+          >
+            {{ document.status === 'FAILED' ? 'Retry Process' : 'Process' }}
+          </button>
+          <button
+            v-if="canIndex(document)"
+            class="button secondary small"
+            type="button"
+            :disabled="hasActiveTask(document, 'INDEX')"
+            @click="emit('index', document)"
+          >
+            {{ document.indexStatus === 'FAILED' ? 'Retry Index' : 'Index' }}
+          </button>
         </div>
       </article>
     </div>

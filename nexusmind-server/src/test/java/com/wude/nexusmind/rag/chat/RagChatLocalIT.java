@@ -39,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "spring.autoconfigure.exclude="
                         + "org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration",
                 "nexusmind.vector.enabled=true",
+                "nexusmind.document-task.worker-enabled=false",
                 "nexusmind.milvus.enabled=true",
                 "nexusmind.rag.enabled=true",
                 "nexusmind.ai.embedding.model=deterministic-test",

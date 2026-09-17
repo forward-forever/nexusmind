@@ -4,7 +4,6 @@ import com.wude.nexusmind.knowledge.domain.KnowledgeChunk;
 import com.wude.nexusmind.knowledge.domain.KnowledgeDocument;
 import com.wude.nexusmind.knowledge.service.ChunkService;
 import com.wude.nexusmind.knowledge.service.DocumentIngestionService;
-import com.wude.nexusmind.knowledge.service.DocumentProcessingService;
 import com.wude.nexusmind.knowledge.service.DocumentService;
 import com.wude.nexusmind.knowledge.service.DocumentUploadResult;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -27,16 +26,13 @@ import java.util.List;
 public class DocumentController {
 
     private final DocumentIngestionService ingestionService;
-    private final DocumentProcessingService processingService;
     private final DocumentService documentService;
     private final ChunkService chunkService;
 
     public DocumentController(DocumentIngestionService ingestionService,
-                              DocumentProcessingService processingService,
                               DocumentService documentService,
                               ChunkService chunkService) {
         this.ingestionService = ingestionService;
-        this.processingService = processingService;
         this.documentService = documentService;
         this.chunkService = chunkService;
     }
@@ -58,11 +54,6 @@ public class DocumentController {
         return documentService.listByKnowledgeBase(knowledgeBaseId).stream()
                 .map(DocumentSummaryResponse::from)
                 .toList();
-    }
-
-    @PostMapping("/documents/{documentId}/process")
-    public KnowledgeDocument process(@PathVariable long documentId) {
-        return processingService.process(documentId);
     }
 
     @GetMapping("/documents/{documentId}")

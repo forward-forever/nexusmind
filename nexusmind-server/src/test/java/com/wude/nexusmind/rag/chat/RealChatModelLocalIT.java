@@ -15,6 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
                 "spring.ai.model.embedding=none",
+                "nexusmind.document-task.worker-enabled=false",
                 "nexusmind.vector.enabled=false",
                 "nexusmind.milvus.enabled=false",
                 "nexusmind.rag.enabled=false"

@@ -5,7 +5,6 @@ import com.wude.nexusmind.knowledge.domain.DocumentStatus;
 import com.wude.nexusmind.knowledge.domain.KnowledgeDocument;
 import com.wude.nexusmind.knowledge.service.ChunkService;
 import com.wude.nexusmind.knowledge.service.DocumentIngestionService;
-import com.wude.nexusmind.knowledge.service.DocumentProcessingService;
 import com.wude.nexusmind.knowledge.service.DocumentService;
 import org.junit.jupiter.api.Test;
 
@@ -36,7 +35,6 @@ class DocumentControllerTest {
 
         DocumentController controller = new DocumentController(
                 mock(DocumentIngestionService.class),
-                mock(DocumentProcessingService.class),
                 documentService,
                 mock(ChunkService.class));
 

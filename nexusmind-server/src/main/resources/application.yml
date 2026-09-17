@@ -36,6 +36,16 @@ info:
     description: NexusMind AI Knowledge & Agent Platform
 
 nexusmind:
+  document-task:
+    enabled: false
+    worker-enabled: true
+    worker-concurrency: 2
+    poll-interval: 1s
+    heartbeat-interval: 10s
+    stale-after: 5m
+    recovery-interval: 30s
+    max-stale-recoveries: 3
+    shutdown-await: 30s
   agent:
     enabled: false
     max-tool-calls: 5

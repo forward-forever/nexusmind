@@ -44,6 +44,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
                 "spring.ai.model.chat=none",
+                "nexusmind.document-task.worker-enabled=false",
                 "spring.ai.model.embedding=none",
                 "nexusmind.vector.enabled=false",
                 "nexusmind.milvus.enabled=false",

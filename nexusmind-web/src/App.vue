@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import DocumentPanel from '@/components/DocumentPanel.vue'
 import AgentChatPanel from '@/components/AgentChatPanel.vue'
 import KnowledgeBasePanel from '@/components/KnowledgeBasePanel.vue'
@@ -7,13 +7,19 @@ import RagChatPanel from '@/components/RagChatPanel.vue'
 import RetrievalDebugPanel from '@/components/RetrievalDebugPanel.vue'
 import WorkspaceContextBar from '@/components/WorkspaceContextBar.vue'
 import { createKnowledgeBase, listKnowledgeBases } from '@/api/knowledge'
-import { indexDocument, listDocuments, processDocument, uploadDocument } from '@/api/document'
+import {
+  getDocumentTask,
+  indexDocument,
+  listActiveDocumentTasks,
+  listDocuments,
+  processDocument,
+  uploadDocument,
+} from '@/api/document'
 import { errorMessage } from '@/api/http'
 import type { CreateKnowledgeBaseRequest, KnowledgeBase } from '@/types/knowledge'
-import type { DocumentSummary } from '@/types/document'
+import type { DocumentSummary, DocumentTask } from '@/types/document'
 
 type NoticeKind = 'success' | 'info' | 'error'
-type DocumentAction = 'process' | 'index' | 'prepare'
 type WorkspaceTab = 'knowledge' | 'agent' | 'rag' | 'retrieval'
 
 const workspaceTabs: ReadonlyArray<{ id: WorkspaceTab; label: string }> = [
@@ -30,12 +36,13 @@ const loadingKnowledgeBases = ref(true)
 const loadingDocuments = ref(false)
 const creatingKnowledgeBase = ref(false)
 const uploadBusy = ref(false)
-const activeDocumentId = ref<number | null>(null)
-const activeDocumentAction = ref<DocumentAction | null>(null)
+const documentTasks = ref<DocumentTask[]>([])
 const notice = ref<{ kind: NoticeKind; message: string } | null>(null)
 const activeTab = ref<WorkspaceTab>('knowledge')
 let noticeTimer: ReturnType<typeof setTimeout> | null = null
 let documentLoadVersion = 0
+let taskPollTimer: ReturnType<typeof setTimeout> | null = null
+let taskPollVersion = 0
 
 const selectedKnowledgeBase = computed(
   () =>
@@ -51,10 +58,14 @@ const indexedDocumentCount = computed(
 )
 
 onMounted(() => void refreshKnowledgeBases())
+onBeforeUnmount(stopTaskPolling)
 
 watch(selectedKnowledgeBaseId, (id) => {
+  stopTaskPolling()
+  taskPollVersion++
+  documentTasks.value = []
   documents.value = []
-  if (id !== null) void refreshDocuments(id)
+  if (id !== null) void Promise.all([refreshDocuments(id), loadActiveTasks(id)])
 })
 
 async function refreshKnowledgeBases(preferredId?: number): Promise<void> {
@@ -131,52 +142,74 @@ async function handleUpload(file: File): Promise<void> {
 }
 
 async function handleProcess(document: DocumentSummary): Promise<void> {
-  await runDocumentAction(document, 'process', async () => {
-    await processDocument(document.id)
-    showNotice('success', `${document.originalFileName} Process 完成`)
-  })
+  try {
+    const task = await processDocument(document.id)
+    upsertTask(task)
+    showNotice('info', `${document.originalFileName} Process 已进入队列`)
+    ensureTaskPolling()
+  } catch (error) {
+    showNotice('error', errorMessage(error))
+  }
 }
 
 async function handleIndex(document: DocumentSummary): Promise<void> {
-  await runDocumentAction(document, 'index', async () => {
-    await indexDocument(document.id)
-    showNotice('success', `${document.originalFileName} 已可用于 RAG`)
-  })
-}
-
-async function handlePrepare(document: DocumentSummary): Promise<void> {
-  await runDocumentAction(document, 'prepare', async () => {
-    let current = document
-    if (current.status === 'UPLOADED' || current.status === 'FAILED') {
-      current = await processDocument(current.id)
-    }
-    if (
-      current.status === 'READY' &&
-      (current.indexStatus === 'NOT_INDEXED' || current.indexStatus === 'FAILED')
-    ) {
-      await indexDocument(current.id)
-    }
-    showNotice('success', `${document.originalFileName} 已完成 Process → Index`)
-  })
-}
-
-async function runDocumentAction(
-  document: DocumentSummary,
-  action: DocumentAction,
-  operation: () => Promise<void>,
-): Promise<void> {
-  if (activeDocumentId.value !== null) return
-  activeDocumentId.value = document.id
-  activeDocumentAction.value = action
   try {
-    await operation()
+    const task = await indexDocument(document.id)
+    upsertTask(task)
+    showNotice('info', `${document.originalFileName} Index 已进入队列`)
+    ensureTaskPolling()
   } catch (error) {
     showNotice('error', errorMessage(error))
-  } finally {
-    activeDocumentId.value = null
-    activeDocumentAction.value = null
-    await refreshDocuments()
   }
+}
+
+async function loadActiveTasks(knowledgeBaseId: number): Promise<void> {
+  const version = taskPollVersion
+  try {
+    const tasks = await listActiveDocumentTasks(knowledgeBaseId)
+    if (version !== taskPollVersion || knowledgeBaseId !== selectedKnowledgeBaseId.value) return
+    documentTasks.value = tasks
+    ensureTaskPolling()
+  } catch (error) {
+    if (version === taskPollVersion) showNotice('error', errorMessage(error))
+  }
+}
+
+function upsertTask(task: DocumentTask): void {
+  const index = documentTasks.value.findIndex((item) => item.taskId === task.taskId)
+  if (index < 0) documentTasks.value = [...documentTasks.value, task]
+  else documentTasks.value = documentTasks.value.map((item, itemIndex) => itemIndex === index ? task : item)
+}
+
+function ensureTaskPolling(): void {
+  if (taskPollTimer || !documentTasks.value.some(isActiveTask)) return
+  taskPollTimer = setTimeout(() => void pollTasks(), 1500)
+}
+
+async function pollTasks(): Promise<void> {
+  taskPollTimer = null
+  const version = taskPollVersion
+  const active = documentTasks.value.filter(isActiveTask)
+  if (active.length === 0) return
+  try {
+    const updated = await Promise.all(active.map((task) => getDocumentTask(task.taskId)))
+    if (version !== taskPollVersion) return
+    const hadTerminal = updated.some((task) => !isActiveTask(task))
+    updated.forEach(upsertTask)
+    if (hadTerminal) await refreshDocuments()
+  } catch (error) {
+    if (version === taskPollVersion) showNotice('error', errorMessage(error))
+  }
+  if (version === taskPollVersion) ensureTaskPolling()
+}
+
+function stopTaskPolling(): void {
+  if (taskPollTimer) clearTimeout(taskPollTimer)
+  taskPollTimer = null
+}
+
+function isActiveTask(task: DocumentTask): boolean {
+  return task.status === 'PENDING' || task.status === 'RUNNING'
 }
 
 function showNotice(kind: NoticeKind, message: string): void {
@@ -198,7 +231,7 @@ function showNotice(kind: NoticeKind, message: string): void {
           <p>AI Knowledge & Agent Platform</p>
         </div>
       </div>
-      <div class="version-label"><span></span> V3 · Agent</div>
+      <div class="version-label"><span></span> V4 · Production</div>
     </header>
 
     <div v-if="notice" class="notice" :data-kind="notice.kind" role="status">
@@ -253,12 +286,10 @@ function showNotice(kind: NoticeKind, message: string): void {
               :documents="documents"
               :loading="loadingDocuments"
               :upload-busy="uploadBusy"
-              :active-document-id="activeDocumentId"
-              :active-action="activeDocumentAction"
+              :tasks="documentTasks"
               @upload="handleUpload"
               @process="handleProcess"
               @index="handleIndex"
-              @prepare="handlePrepare"
             />
           </template>
           <section v-else class="empty-workspace">

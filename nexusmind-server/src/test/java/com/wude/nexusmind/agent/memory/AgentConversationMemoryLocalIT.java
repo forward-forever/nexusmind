@@ -61,6 +61,7 @@ import static org.mockito.Mockito.when;
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = {
                 "nexusmind.agent.enabled=false",
+                "nexusmind.document-task.worker-enabled=false",
                 "spring.ai.model.chat=none",
                 "spring.ai.model.embedding=none",
                 "nexusmind.vector.enabled=false",
@@ -84,7 +85,7 @@ class AgentConversationMemoryLocalIT {
 
     @Test
     void persistsFirstRunLoadsSecondRunAndKeepsMultiToolTraceOutOfMemory() {
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("3");
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("4");
         QueueModelTurnStreamer streamer = new QueueModelTurnStreamer(List.of(
                 Flux.just(text("我记住了。")),
                 Flux.just(toolCalls(searchCall("call-1", "MVCC Read View"))),

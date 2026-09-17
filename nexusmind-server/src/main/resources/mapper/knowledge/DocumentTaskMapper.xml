@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wude.nexusmind.knowledge.task.DocumentTaskMapper">
+    <resultMap id="taskMap" type="com.wude.nexusmind.knowledge.task.KnowledgeDocumentTask">
+        <id property="id" column="id"/>
+        <result property="knowledgeBaseId" column="knowledge_base_id"/>
+        <result property="documentId" column="document_id"/>
+        <result property="taskType" column="task_type"/>
+        <result property="status" column="status"/>
+        <result property="attemptCount" column="attempt_count"/>
+        <result property="recoveryCount" column="recovery_count"/>
+        <result property="workerId" column="worker_id"/>
+        <result property="runToken" column="run_token"/>
+        <result property="lastError" column="last_error"/>
+        <result property="enqueuedAt" column="enqueued_at"/>
+        <result property="startedAt" column="started_at"/>
+        <result property="heartbeatAt" column="heartbeat_at"/>
+        <result property="finishedAt" column="finished_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+    <sql id="columns">id, knowledge_base_id, document_id, task_type, status, attempt_count,
+        recovery_count, worker_id, run_token, last_error, enqueued_at, started_at, heartbeat_at,
+        finished_at, created_at, updated_at</sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO knowledge_document_task
+        (knowledge_base_id, document_id, task_type, status, attempt_count, recovery_count,
+         worker_id, run_token, last_error, enqueued_at, started_at, heartbeat_at, finished_at)
+        VALUES (#{knowledgeBaseId}, #{documentId}, #{taskType}, #{status}, #{attemptCount},
+                #{recoveryCount}, NULL, NULL, #{lastError,jdbcType=VARCHAR}, #{enqueuedAt}, NULL, NULL,
+                #{finishedAt,jdbcType=TIMESTAMP})
+    </insert>
+    <select id="findById" resultMap="taskMap">
+        SELECT <include refid="columns"/> FROM knowledge_document_task WHERE id = #{id}
+    </select>
+    <select id="findByIdForUpdate" resultMap="taskMap">
+        SELECT <include refid="columns"/> FROM knowledge_document_task WHERE id = #{id} FOR UPDATE
+    </select>
+    <select id="findByDocumentAndTypeForUpdate" resultMap="taskMap">
+        SELECT <include refid="columns"/> FROM knowledge_document_task
+        WHERE document_id = #{documentId} AND task_type = #{taskType} FOR UPDATE
+    </select>
+    <select id="findActiveByKnowledgeBaseId" resultMap="taskMap">
+        SELECT <include refid="columns"/> FROM knowledge_document_task
+        WHERE knowledge_base_id = #{knowledgeBaseId} AND status IN ('PENDING','RUNNING')
+        ORDER BY enqueued_at, id
+    </select>
+    <select id="findNextPendingForUpdate" resultMap="taskMap">
+        SELECT <include refid="columns"/> FROM knowledge_document_task
+        WHERE status = 'PENDING' ORDER BY enqueued_at, id LIMIT 1 FOR UPDATE SKIP LOCKED
+    </select>
+    <update id="requeue">
+        UPDATE knowledge_document_task SET status='PENDING', enqueued_at=#{enqueuedAt},
+            started_at=NULL, heartbeat_at=NULL, finished_at=NULL, worker_id=NULL, run_token=NULL,
+            last_error=NULL,
+            recovery_count=CASE WHEN #{resetRecoveryCount} THEN 0 ELSE recovery_count END
+        WHERE id=#{id}
+    </update>
+    <update id="claim">
+        UPDATE knowledge_document_task SET status='RUNNING', worker_id=#{workerId}, run_token=#{runToken},
+            started_at=#{now}, heartbeat_at=#{now}, finished_at=NULL, last_error=NULL,
+            attempt_count=attempt_count+1 WHERE id=#{id} AND status='PENDING'
+    </update>
+    <update id="heartbeat">
+        UPDATE knowledge_document_task SET heartbeat_at=#{now}
+        WHERE id=#{id} AND status='RUNNING' AND run_token=#{runToken}
+    </update>
+    <update id="markSucceeded">
+        UPDATE knowledge_document_task SET status='SUCCEEDED', finished_at=#{now}, heartbeat_at=#{now},
+            worker_id=NULL, run_token=NULL, last_error=NULL
+        WHERE id=#{id} AND status='RUNNING' AND run_token=#{runToken}
+    </update>
+    <update id="markFailed">
+        UPDATE knowledge_document_task SET status='FAILED', finished_at=#{now}, heartbeat_at=#{now},
+            worker_id=NULL, run_token=NULL, last_error=#{error}
+        WHERE id=#{id} AND status='RUNNING' AND run_token=#{runToken}
+    </update>
+    <select id="findStaleRunningIds" resultType="long">
+        SELECT id FROM knowledge_document_task
+        WHERE status='RUNNING' AND heartbeat_at &lt; #{cutoff} ORDER BY heartbeat_at, id
+    </select>
+    <update id="recoverToPending">
+        UPDATE knowledge_document_task SET status='PENDING', recovery_count=recovery_count+1,
+            enqueued_at=#{enqueuedAt}, started_at=NULL, heartbeat_at=NULL, finished_at=NULL,
+            worker_id=NULL, run_token=NULL, last_error=#{error}
+        WHERE id=#{id} AND status='RUNNING'
+    </update>
+    <update id="reconcileSucceeded">
+        UPDATE knowledge_document_task SET status='SUCCEEDED', finished_at=#{now}, heartbeat_at=#{now},
+            worker_id=NULL, run_token=NULL, last_error=NULL WHERE id=#{id} AND status='RUNNING'
+    </update>
+    <update id="completeLogical">
+        UPDATE knowledge_document_task SET status='SUCCEEDED', finished_at=#{now}, heartbeat_at=NULL,
+            worker_id=NULL, run_token=NULL, last_error=NULL WHERE id=#{id}
+    </update>
+    <update id="reconcileFailed">
+        UPDATE knowledge_document_task SET status='FAILED', finished_at=#{now}, heartbeat_at=#{now},
+            worker_id=NULL, run_token=NULL, last_error=#{error} WHERE id=#{id} AND status='RUNNING'
+    </update>
+    <select id="findOrphanProcessingDocumentIds" resultType="long">
+        SELECT d.id FROM knowledge_document d
+        WHERE d.status='PROCESSING' AND NOT EXISTS (
+            SELECT 1 FROM knowledge_document_task t
+            WHERE t.document_id=d.id AND t.task_type='PROCESS' AND t.status IN ('PENDING','RUNNING'))
+    </select>
+    <select id="findOrphanIndexingDocumentIds" resultType="long">
+        SELECT d.id FROM knowledge_document d
+        WHERE d.index_status='INDEXING' AND NOT EXISTS (
+            SELECT 1 FROM knowledge_document_task t
+            WHERE t.document_id=d.id AND t.task_type='INDEX' AND t.status IN ('PENDING','RUNNING'))
+    </select>
+</mapper>

@@ -12,6 +12,7 @@ import com.wude.nexusmind.rag.exception.EmbeddingConfigurationMismatchException;
 import com.wude.nexusmind.rag.exception.EmbeddingGenerationException;
 import com.wude.nexusmind.rag.exception.KnowledgeBaseInactiveException;
 import com.wude.nexusmind.rag.exception.VectorIndexException;
+import com.wude.nexusmind.knowledge.task.DocumentTaskNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
@@ -42,6 +43,12 @@ public class KnowledgeExceptionHandler {
     public ResponseEntity<ApiError> documentNotFound(DocumentNotFoundException exception,
                                                        HttpServletRequest request) {
         return response(HttpStatus.NOT_FOUND, "DOCUMENT_NOT_FOUND", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(DocumentTaskNotFoundException.class)
+    public ResponseEntity<ApiError> documentTaskNotFound(DocumentTaskNotFoundException exception,
+                                                          HttpServletRequest request) {
+        return response(HttpStatus.NOT_FOUND, "DOCUMENT_TASK_NOT_FOUND", exception.getMessage(), request);
     }
 
     @ExceptionHandler(UnsupportedDocumentTypeException.class)

@@ -44,6 +44,8 @@ mybatis:
     default-enum-type-handler: org.apache.ibatis.type.EnumTypeHandler
 
 nexusmind:
+  document-task:
+    enabled: true
   agent-evaluation:
     enabled: ${NEXUSMIND_AGENT_EVALUATION_ENABLED:false}
   agent:

@@ -1,7 +1,5 @@
 package com.wude.nexusmind.rag.api;
 
-import com.wude.nexusmind.knowledge.domain.KnowledgeDocument;
-import com.wude.nexusmind.rag.index.DocumentIndexingService;
 import com.wude.nexusmind.rag.retrieval.DenseRetrievalService;
 import com.wude.nexusmind.rag.retrieval.DenseSearchResult;
 import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
@@ -20,18 +18,10 @@ import org.springframework.web.bind.annotation.RestController;
 @ConditionalOnProperty(name = "spring.ai.model.embedding", havingValue = "openai")
 public class DenseRetrievalController {
 
-    private final DocumentIndexingService indexingService;
     private final RetrievalServiceRegistry retrievalServices;
 
-    public DenseRetrievalController(DocumentIndexingService indexingService,
-                                    RetrievalServiceRegistry retrievalServices) {
-        this.indexingService = indexingService;
+    public DenseRetrievalController(RetrievalServiceRegistry retrievalServices) {
         this.retrievalServices = retrievalServices;
-    }
-
-    @PostMapping("/documents/{documentId}/index")
-    public KnowledgeDocument index(@PathVariable long documentId) {
-        return indexingService.index(documentId);
     }
 
     @PostMapping("/knowledge-bases/{knowledgeBaseId}/search")

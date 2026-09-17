@@ -8,7 +8,7 @@ NexusMind 是一个个人 AI 应用项目，定位为 **AI Knowledge & Agent Pla
 
 ## 当前阶段
 
-V1 Basic RAG、V2 Retrieval Quality 与 V3 Agent 均已完成并冻结：
+V1 Basic RAG、V2 Retrieval Quality 与 V3 Agent 均已完成并冻结；V4 Production Engineering 正在进行：
 
 ```text
 Document Upload → Local Storage → Parser → Sliding Window Chunk → MySQL
@@ -17,12 +17,14 @@ Question → Configured RetrievalService → Context → qwen3.5-flash → SSE A
 Browser → Knowledge Base → Upload → Process → Index → RAG + Retrieval Lab
 Agent → qwen3.5-flash tool decision → KnowledgeSearchTool / DocumentContextTool
       → Multi-step tool loop → Conversation Memory → final answer + Tool Trace
+HTTP Process / Index → MySQL Durable Task → Background Worker → Recovery
 ```
 
 支持 PDF、Markdown 和 UTF-8 TXT。Web 端是一个 tabbed NexusMind Workbench：`Knowledge` 管理 Knowledge Base 与文档，`Agent Chat` 展示 Tool Calling 与跨轮 Session，`RAG Chat` 保留固定 RAG，`Retrieval Lab` 并排检查 DENSE、BM25、HYBRID_RRF、HYBRID_RERANK 的单 Query 结果与 provenance。
 
 V1 的完整启动和人工验收步骤见 [`docs/v1-demo.md`](docs/v1-demo.md)，V2 正式实验结论见 [`docs/v2-retrieval-quality.md`](docs/v2-retrieval-quality.md)。
 V3 的完整架构、Guardrails、Behavior Evaluation 与限制见 [`docs/v3-agent.md`](docs/v3-agent.md)。
+V4 异步文档任务的状态机、幂等与恢复设计见 [`docs/async-document-tasks.md`](docs/async-document-tasks.md)。
 
 ## Retrieval Architecture
 
@@ -99,4 +101,5 @@ V1 Fixed RAG 与 V3 Agent 是两个独立入口：前者固定执行 Retrieval �
   - Structured Agent SSE / Tool Trace
   - Agent Guardrails
   - Agent Behavior Evaluation
-- V4 - Production Engineering（Planned）
+- V4 - Production Engineering（In Progress）
+  - Durable Async Document Processing / Indexing ✅

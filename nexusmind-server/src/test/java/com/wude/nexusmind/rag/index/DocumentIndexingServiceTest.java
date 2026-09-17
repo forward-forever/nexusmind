@@ -68,6 +68,17 @@ class DocumentIndexingServiceTest {
         verify(fixture.stateService, never()).markIndexed(10L);
     }
 
+    @Test
+    void repeatedIndexExecutionUpsertsTheSameStableChunkIdentities() {
+        Fixture fixture = fixture(3, -1);
+
+        fixture.service.index(10L);
+        fixture.service.index(10L);
+
+        assertThat(fixture.vectorIndex.upsertChunkIds)
+                .containsExactly(List.of(100L, 101L, 102L), List.of(100L, 101L, 102L));
+    }
+
     private static Fixture fixture(int chunkCount, int failOnCall) {
         DocumentService documentService = mock(DocumentService.class);
         DocumentIndexStateService stateService = mock(DocumentIndexStateService.class);
@@ -157,6 +168,7 @@ class DocumentIndexingServiceTest {
 
         private final List<Integer> upsertBatchSizes = new ArrayList<>();
         private final List<Long> deletedDocumentIds = new ArrayList<>();
+        private final List<List<Long>> upsertChunkIds = new ArrayList<>();
         private int ensureCalls;
 
         @Override
@@ -171,6 +183,7 @@ class DocumentIndexingServiceTest {
         @Override
         public void upsert(String collectionName, List<VectorIndexEntity> entities, int dimension) {
             upsertBatchSizes.add(entities.size());
+            upsertChunkIds.add(entities.stream().map(entity -> entity.chunk().getId()).toList());
         }
 
         @Override

@@ -1,5 +1,5 @@
 import { requestJson } from './http'
-import type { DocumentSummary, KnowledgeDocument, UploadDocumentResponse } from '@/types/document'
+import type { DocumentSummary, DocumentTask, UploadDocumentResponse } from '@/types/document'
 
 export function listDocuments(knowledgeBaseId: number): Promise<DocumentSummary[]> {
   return requestJson(`/api/knowledge-bases/${knowledgeBaseId}/documents`)
@@ -17,10 +17,18 @@ export function uploadDocument(
   })
 }
 
-export function processDocument(documentId: number): Promise<KnowledgeDocument> {
+export function processDocument(documentId: number): Promise<DocumentTask> {
   return requestJson(`/api/documents/${documentId}/process`, { method: 'POST' })
 }
 
-export function indexDocument(documentId: number): Promise<KnowledgeDocument> {
+export function indexDocument(documentId: number): Promise<DocumentTask> {
   return requestJson(`/api/documents/${documentId}/index`, { method: 'POST' })
+}
+
+export function getDocumentTask(taskId: number): Promise<DocumentTask> {
+  return requestJson(`/api/document-tasks/${taskId}`)
+}
+
+export function listActiveDocumentTasks(knowledgeBaseId: number): Promise<DocumentTask[]> {
+  return requestJson(`/api/knowledge-bases/${knowledgeBaseId}/document-tasks?active=true`)
 }

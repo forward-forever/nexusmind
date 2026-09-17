@@ -488,6 +488,26 @@ select:focus {
   justify-content: flex-end;
   gap: 4px;
 }
+.document-task-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  margin-top: 10px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+}
+.document-task-summary strong {
+  color: var(--accent-dark);
+}
+.document-task-summary[data-status='failed'] strong {
+  color: var(--danger);
+}
+.document-task-summary .row-error {
+  flex-basis: 100%;
+  margin: 0;
+}
 .working-label {
   color: var(--warning);
   font-size: 11px;
