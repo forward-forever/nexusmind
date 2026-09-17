@@ -7,6 +7,9 @@
     <resultMap id="agentSessionResultMap" type="com.wude.nexusmind.agent.memory.domain.AgentSessionEntity">
         <id property="sessionId" column="session_id"/>
         <result property="knowledgeBaseId" column="knowledge_base_id"/>
+        <result property="activeRunId" column="active_run_id"/>
+        <result property="runAcquiredAt" column="run_acquired_at"/>
+        <result property="runLeaseUntil" column="run_lease_until"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
@@ -16,16 +19,63 @@
         VALUES (#{sessionId}, #{knowledgeBaseId})
     </insert>
 
+    <insert id="insertWithLease">
+        INSERT INTO agent_session (
+            session_id, knowledge_base_id, active_run_id, run_acquired_at, run_lease_until
+        ) VALUES (
+            #{sessionId}, #{knowledgeBaseId}, #{runId}, CURRENT_TIMESTAMP(3),
+            TIMESTAMPADD(MICROSECOND, #{leaseMicros}, CURRENT_TIMESTAMP(3))
+        )
+    </insert>
+
     <select id="findById" resultMap="agentSessionResultMap">
-        SELECT session_id, knowledge_base_id, created_at, updated_at
+        SELECT session_id, knowledge_base_id, active_run_id, run_acquired_at, run_lease_until,
+               created_at, updated_at
         FROM agent_session
         WHERE session_id = #{sessionId}
     </select>
+
+    <select id="findOwnedByIdForUpdate" resultMap="agentSessionResultMap">
+        SELECT session_id, knowledge_base_id, active_run_id, run_acquired_at, run_lease_until,
+               created_at, updated_at
+        FROM agent_session
+        WHERE session_id = #{sessionId}
+          AND active_run_id = #{runId}
+          AND run_lease_until &gt;= CURRENT_TIMESTAMP(3)
+        FOR UPDATE
+    </select>
+
+    <update id="acquireLease">
+        UPDATE agent_session
+        SET active_run_id = #{runId},
+            run_acquired_at = CURRENT_TIMESTAMP(3),
+            run_lease_until = TIMESTAMPADD(MICROSECOND, #{leaseMicros}, CURRENT_TIMESTAMP(3))
+        WHERE session_id = #{sessionId}
+          AND knowledge_base_id = #{knowledgeBaseId}
+          AND (active_run_id IS NULL OR run_lease_until &lt; CURRENT_TIMESTAMP(3))
+    </update>
+
+    <update id="releaseLease">
+        UPDATE agent_session
+        SET active_run_id = NULL,
+            run_acquired_at = NULL,
+            run_lease_until = NULL
+        WHERE session_id = #{sessionId}
+          AND active_run_id = #{runId}
+    </update>
 
     <update id="touch">
         UPDATE agent_session
         SET updated_at = CURRENT_TIMESTAMP(3)
         WHERE session_id = #{sessionId}
+    </update>
+
+    <update id="touchOwned">
+        UPDATE agent_session
+        SET updated_at = CURRENT_TIMESTAMP(3)
+        WHERE session_id = #{sessionId}
+          AND active_run_id = #{runId}
+          AND run_lease_until &gt;= CURRENT_TIMESTAMP(3)
     </update>
 
 </mapper>

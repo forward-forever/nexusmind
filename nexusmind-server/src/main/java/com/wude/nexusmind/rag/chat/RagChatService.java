@@ -9,9 +9,11 @@ import com.wude.nexusmind.rag.retrieval.RetrievalResult;
 import com.wude.nexusmind.rag.retrieval.RagRetrievalProperties;
 import com.wude.nexusmind.rag.retrieval.RetrievalService;
 import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
+import com.wude.nexusmind.resilience.ProviderStreamingRetry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -36,6 +38,7 @@ public class RagChatService {
     private final RagPromptFactory promptFactory;
     private final ChatAnswerStreamer chatAnswerStreamer;
     private final RagChatProperties properties;
+    private final ProviderStreamingRetry streamingRetry;
 
     public RagChatService(RetrievalServiceRegistry retrievalServiceRegistry,
                           RagRetrievalProperties retrievalProperties,
@@ -43,12 +46,25 @@ public class RagChatService {
                           RagPromptFactory promptFactory,
                           ChatAnswerStreamer chatAnswerStreamer,
                           RagChatProperties properties) {
+        this(retrievalServiceRegistry, retrievalProperties, contextBuilder, promptFactory,
+                chatAnswerStreamer, properties, ProviderStreamingRetry.noRetry());
+    }
+
+    @Autowired
+    public RagChatService(RetrievalServiceRegistry retrievalServiceRegistry,
+                          RagRetrievalProperties retrievalProperties,
+                          RagContextBuilder contextBuilder,
+                          RagPromptFactory promptFactory,
+                          ChatAnswerStreamer chatAnswerStreamer,
+                          RagChatProperties properties,
+                          ProviderStreamingRetry streamingRetry) {
         // 默认向量检索服务
         this.retrievalService = retrievalServiceRegistry.get(retrievalProperties.retriever());
         this.contextBuilder = contextBuilder;
         this.promptFactory = promptFactory;
         this.chatAnswerStreamer = chatAnswerStreamer;
         this.properties = properties;
+        this.streamingRetry = streamingRetry;
     }
 
     public Flux<RagStreamEvent> stream(long knowledgeBaseId, String question, Integer requestedTopK) {
@@ -70,12 +86,22 @@ public class RagChatService {
         RagPrompt prompt = promptFactory.create(normalizedQuestion, context);
         StringBuilder generatedAnswer = new StringBuilder();
         AtomicBoolean firstTokenSeen = new AtomicBoolean();
-        Flux<RagStreamEvent> modelFlow = Flux.defer(() -> chatAnswerStreamer.stream(prompt))
+        Flux<RagStreamEvent> modelFlow = streamingRetry.execute(
+                        "openai-compatible-chat", "rag-model-turn",
+                        () -> chatAnswerStreamer.stream(prompt)
+                                .doOnNext(delta -> {
+                                    if (delta != null && !delta.isEmpty()) {
+                                        firstTokenSeen.set(true);
+                                    }
+                                }),
+                        firstTokenSeen::get,
+                        properties::streamTimeout,
+                        () -> new IllegalStateException("RAG model retry deadline exceeded"))
                 .timeout(properties.streamTimeout())
                 .filter(delta -> delta != null && !delta.isEmpty())
                 .map(delta -> {
                     generatedAnswer.append(delta);
-                    if (firstTokenSeen.compareAndSet(false, true)) {
+                    if (generatedAnswer.length() == delta.length()) {
                         log.info("RAG first token: knowledgeBaseId={}, latencyMs={}, model={}",
                                 knowledgeBaseId, elapsedMillis(requestStarted), properties.model());
                     }

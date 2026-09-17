@@ -128,6 +128,18 @@ class AgentConversationMemoryServiceTest {
         verify(fixture.sessions).touch(SESSION_ID);
     }
 
+    @Test
+    void lostLeaseCannotPersistConversationMessages() {
+        Fixture fixture = fixture();
+        when(fixture.sessions.findOwnedByIdForUpdate(SESSION_ID, "old-run"))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> fixture.service.appendSuccessfulTurn(
+                SESSION_ID, "old-run", "question", "answer"))
+                .isInstanceOf(AgentSessionLeaseLostException.class);
+        verify(fixture.messages, never()).insert(any());
+    }
+
     private static Fixture fixture() {
         AgentSessionMapper sessions = mock(AgentSessionMapper.class);
         AgentMessageMapper messages = mock(AgentMessageMapper.class);

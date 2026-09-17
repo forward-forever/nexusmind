@@ -14,6 +14,12 @@ spring:
       audio:
         speech: none
         transcription: none
+    # NexusMind owns provider retry classification and streaming side-effect boundaries.
+    openai:
+      chat:
+        max-retries: 0
+      embedding:
+        max-retries: 0
 
 server:
   port: ${SERVER_PORT:8080}
@@ -58,6 +64,8 @@ nexusmind:
       after-chunks: 1
     memory:
       max-messages: 12
+    session-concurrency:
+      lease-duration: 45s
   agent-evaluation:
     enabled: false
   dataset-resolver:
@@ -69,6 +77,12 @@ nexusmind:
   vector:
     enabled: false
   ai:
+    resilience:
+      max-retries: 2
+      initial-delay: 200ms
+      multiplier: 2.0
+      max-delay: 2s
+      jitter: 100ms
     embedding:
       model: qwen3.7-text-embedding-flash
       dimension: 1024
@@ -98,6 +112,11 @@ nexusmind:
       route-candidate-multiplier: 4
       min-route-candidates: 20
       max-route-candidates: 60
+      parallel:
+        enabled: true
+        core-pool-size: 4
+        max-pool-size: 4
+        queue-capacity: 50
     rerank:
       candidate-top-n: 20
       max-candidate-top-n: 50

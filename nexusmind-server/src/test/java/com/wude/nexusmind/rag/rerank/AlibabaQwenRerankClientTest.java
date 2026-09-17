@@ -1,6 +1,7 @@
 package com.wude.nexusmind.rag.rerank;
 
 import com.wude.nexusmind.model.config.RerankProviderProperties;
+import com.wude.nexusmind.resilience.ProviderRetryExecutorTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -90,6 +91,26 @@ class AlibabaQwenRerankClientTest {
                 .isInstanceOf(RerankClientException.class)
                 .hasMessage("Rerank provider request failed")
                 .hasMessageNotContaining("fake-test-key");
+        server.verify();
+    }
+
+    @Test
+    void retriesSameRerankRequestAfterTransientServerFailure() {
+        RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(once(), requestTo(ENDPOINT)).andRespond(withServerError());
+        server.expect(once(), requestTo(ENDPOINT)).andRespond(withSuccess("""
+                {
+                  "output":{"results":[{"index":0,"relevance_score":0.91}]},
+                  "usage":{"prompt_tokens":10,"total_tokens":10}
+                }
+                """, MediaType.APPLICATION_JSON));
+        AlibabaQwenRerankClient client = new AlibabaQwenRerankClient(
+                builder.build(), properties(), ProviderRetryExecutorTest.executor(2), System::nanoTime);
+
+        RerankResult result = client.rerank("query", List.of("document"), 1);
+
+        assertThat(result.items()).containsExactly(new RerankResult.Item(0, 0.91));
         server.verify();
     }
 

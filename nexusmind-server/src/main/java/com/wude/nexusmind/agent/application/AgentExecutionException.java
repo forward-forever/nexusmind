@@ -36,6 +36,16 @@ public final class AgentExecutionException extends RuntimeException {
                 "AGENT_INTERNAL_ERROR", "Agent 执行失败，请稍后重试", cause);
     }
 
+    public static AgentExecutionException sessionBusy() {
+        return new AgentExecutionException(
+                "AGENT_SESSION_BUSY", "当前会话已有 Agent 请求正在执行，请稍后重试", null);
+    }
+
+    public static AgentExecutionException leaseLost(Throwable cause) {
+        return new AgentExecutionException(
+                "AGENT_SESSION_LEASE_LOST", "当前 Agent 运行已失去会话所有权", cause);
+    }
+
     public String code() {
         return code;
     }

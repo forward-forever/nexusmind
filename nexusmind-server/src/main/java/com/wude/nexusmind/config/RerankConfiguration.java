@@ -7,6 +7,7 @@ import com.wude.nexusmind.rag.retrieval.HybridRerankRetrievalService;
 import com.wude.nexusmind.rag.retrieval.HybridRrfRetrievalService;
 import com.wude.nexusmind.rag.retrieval.RerankCandidatePlanner;
 import com.wude.nexusmind.rag.retrieval.RerankRetrievalProperties;
+import com.wude.nexusmind.resilience.ProviderRetryExecutor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -24,7 +25,8 @@ public class RerankConfiguration {
     @Bean
     @ConditionalOnProperty(name = "nexusmind.ai.rerank.enabled", havingValue = "true")
     RerankClient rerankClient(RestClient.Builder restClientBuilder,
-                              RerankProviderProperties properties) {
+                              RerankProviderProperties properties,
+                              ProviderRetryExecutor retryExecutor) {
         HttpClient httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.timeout())
                 .build();
@@ -36,7 +38,7 @@ public class RerankConfiguration {
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, "application/json")
                 .requestFactory(requestFactory)
                 .build();
-        return new AlibabaQwenRerankClient(restClient, properties);
+        return new AlibabaQwenRerankClient(restClient, properties, retryExecutor);
     }
 
     @Bean

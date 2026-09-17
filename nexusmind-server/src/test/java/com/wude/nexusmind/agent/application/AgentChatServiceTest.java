@@ -4,6 +4,7 @@ import com.wude.nexusmind.agent.config.AgentProperties;
 import com.wude.nexusmind.agent.memory.AgentConversationMemoryService;
 import com.wude.nexusmind.agent.memory.AgentSessionKnowledgeBaseMismatchException;
 import com.wude.nexusmind.agent.memory.AgentSessionNotFoundException;
+import com.wude.nexusmind.agent.memory.AgentSessionBusyException;
 import com.wude.nexusmind.agent.prompt.AgentPromptFactory;
 import com.wude.nexusmind.agent.stream.AgentStreamEvent;
 import com.wude.nexusmind.agent.tool.AgentToolSet;
@@ -42,6 +43,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.net.SocketTimeoutException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -76,7 +78,10 @@ class AgentChatServiceTest {
         assertThat(events).extracting(AgentStreamEvent::sessionId)
                 .containsOnly("11111111-1111-1111-1111-111111111111");
         verify(fixture.memory).appendSuccessfulTurn(
-                "11111111-1111-1111-1111-111111111111", "你好，你是谁？", "你好");
+                org.mockito.ArgumentMatchers.eq("11111111-1111-1111-1111-111111111111"),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq("你好，你是谁？"),
+                org.mockito.ArgumentMatchers.eq("你好"));
         verify(fixture.retrieval, org.mockito.Mockito.never()).retrieve(
                 org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyString(),
@@ -105,9 +110,10 @@ class AgentChatServiceTest {
         assertThat(fixture.streamer.prompts.get(1).getInstructions())
                 .anyMatch(ToolResponseMessage.class::isInstance);
         verify(fixture.memory).appendSuccessfulTurn(
-                "11111111-1111-1111-1111-111111111111",
-                "根据当前知识库解释 MVCC 的 Read View。",
-                "Read View 决定可见性。[S1]");
+                org.mockito.ArgumentMatchers.eq("11111111-1111-1111-1111-111111111111"),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq("根据当前知识库解释 MVCC 的 Read View。"),
+                org.mockito.ArgumentMatchers.eq("Read View 决定可见性。[S1]"));
     }
 
     @Test
@@ -123,7 +129,10 @@ class AgentChatServiceTest {
         fixture.service.chat(33L, "question").collectList().block(Duration.ofSeconds(2));
 
         verify(fixture.memory).appendSuccessfulTurn(
-                "11111111-1111-1111-1111-111111111111", "question", "最终回答。[S1]");
+                org.mockito.ArgumentMatchers.eq("11111111-1111-1111-1111-111111111111"),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq("question"),
+                org.mockito.ArgumentMatchers.eq("最终回答。[S1]"));
     }
 
     @Test
@@ -134,7 +143,7 @@ class AgentChatServiceTest {
         when(unknownFixture.memory.resolveSession(33L, unknown))
                 .thenThrow(new AgentSessionNotFoundException(unknown));
 
-        assertThatThrownBy(() -> unknownFixture.service.chat(33L, unknown, "question"))
+        assertThatThrownBy(() -> unknownFixture.service.chat(33L, unknown, "question").blockLast())
                 .isInstanceOf(AgentSessionNotFoundException.class);
         assertThat(unknownFixture.streamer.prompts).isEmpty();
 
@@ -144,9 +153,77 @@ class AgentChatServiceTest {
         when(crossKbFixture.memory.resolveSession(33L, foreign))
                 .thenThrow(new AgentSessionKnowledgeBaseMismatchException(foreign, 33L));
 
-        assertThatThrownBy(() -> crossKbFixture.service.chat(33L, foreign, "question"))
+        assertThatThrownBy(() -> crossKbFixture.service.chat(33L, foreign, "question").blockLast())
                 .isInstanceOf(AgentSessionKnowledgeBaseMismatchException.class);
         assertThat(crossKbFixture.streamer.prompts).isEmpty();
+    }
+
+    @Test
+    void busySessionEmitsExplicitErrorWithoutInvokingModel() {
+        String sessionId = "22222222-2222-2222-2222-222222222222";
+        Fixture fixture = fixture(5, Clock.systemUTC(), false,
+                Flux.just(text("must not execute")));
+        when(fixture.concurrency.acquire(org.mockito.ArgumentMatchers.eq(33L),
+                org.mockito.ArgumentMatchers.eq(sessionId), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new AgentSessionBusyException(sessionId));
+
+        List<AgentStreamEvent> events = fixture.service.chat(33L, sessionId, "question")
+                .collectList().block(Duration.ofSeconds(2));
+
+        assertThat(events).hasSize(1);
+        assertThat(events.get(0).code()).isEqualTo("AGENT_SESSION_BUSY");
+        assertThat(fixture.streamer.prompts).isEmpty();
+    }
+
+    @Test
+    void retriesAgentModelTurnBeforeDeltaAndToolExecutionWithoutIncrementingLogicalTurn() {
+        Fixture fixture = fixture(5, Clock.systemUTC(), false,
+                retryingStreamingPolicy(),
+                Flux.error(new IllegalStateException(new SocketTimeoutException("temporary"))),
+                Flux.just(toolCalls(call("call-1", "MVCC"))),
+                Flux.just(text("answer [S1]")));
+
+        List<AgentStreamEvent> events = fixture.service.chat(33L, "question")
+                .collectList().block(Duration.ofSeconds(2));
+
+        AgentStreamEvent done = events.get(events.size() - 1);
+        assertThat(done.type()).isEqualTo("done");
+        assertThat(done.modelTurnCount()).isEqualTo(2);
+        assertThat(done.toolCallCount()).isEqualTo(1);
+        assertThat(fixture.streamer.prompts).hasSize(3);
+    }
+
+    @Test
+    void doesNotRetryAgentModelTurnAfterAssistantDeltaWasPublished() {
+        Fixture fixture = fixture(5, Clock.systemUTC(), false,
+                retryingStreamingPolicy(),
+                Flux.concat(Flux.just(text("partial")),
+                        Flux.error(new IllegalStateException(new SocketTimeoutException("temporary")))),
+                Flux.just(text("must not replay")));
+
+        List<AgentStreamEvent> events = fixture.service.chat(33L, "question")
+                .collectList().block(Duration.ofSeconds(2));
+
+        assertThat(events).extracting(AgentStreamEvent::type)
+                .containsExactly("assistant_delta", "error");
+        assertThat(fixture.streamer.prompts).hasSize(1);
+    }
+
+    @Test
+    void doesNotRetryLaterModelTurnAfterToolExecutionStarted() {
+        Fixture fixture = fixture(5, Clock.systemUTC(), false,
+                retryingStreamingPolicy(),
+                Flux.just(toolCalls(call("call-1", "MVCC"))),
+                Flux.error(new IllegalStateException(new SocketTimeoutException("temporary"))),
+                Flux.just(text("must not replay")));
+
+        List<AgentStreamEvent> events = fixture.service.chat(33L, "question")
+                .collectList().block(Duration.ofSeconds(2));
+
+        assertThat(events).extracting(AgentStreamEvent::type)
+                .containsExactly("tool_start", "tool_result", "error");
+        assertThat(fixture.streamer.prompts).hasSize(2);
     }
 
     @Test
@@ -202,9 +279,10 @@ class AgentChatServiceTest {
                 .containsExactly("S1", "S2", "S3");
         assertThat(fixture.streamer.prompts).hasSize(3);
         verify(fixture.memory).appendSuccessfulTurn(
-                "11111111-1111-1111-1111-111111111111",
-                "搜索并查看附近上下文",
-                "RC 每次读取创建 Read View，RR 通常复用事务级 Read View。[S1][S3]");
+                org.mockito.ArgumentMatchers.eq("11111111-1111-1111-1111-111111111111"),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq("搜索并查看附近上下文"),
+                org.mockito.ArgumentMatchers.eq("RC 每次读取创建 Read View，RR 通常复用事务级 Read View。[S1][S3]"));
     }
 
     @Test
@@ -239,7 +317,10 @@ class AgentChatServiceTest {
                 .count();
         assertThat(historicalQuestionOccurrences).isEqualTo(1);
         verify(fixture.memory).appendSuccessfulTurn(
-                sessionId, "你刚才说的第二种是什么？", "第二种隔离级别是 RR。[S1]");
+                org.mockito.ArgumentMatchers.eq(sessionId),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq("你刚才说的第二种是什么？"),
+                org.mockito.ArgumentMatchers.eq("第二种隔离级别是 RR。[S1]"));
     }
 
     @Test
@@ -277,6 +358,7 @@ class AgentChatServiceTest {
         verify(fixture.memory, never()).appendSuccessfulTurn(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString());
     }
 
@@ -301,6 +383,7 @@ class AgentChatServiceTest {
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.eq(5));
         verify(fixture.memory, never()).appendSuccessfulTurn(
+                org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString());
@@ -328,6 +411,7 @@ class AgentChatServiceTest {
         verify(fixture.memory, never()).appendSuccessfulTurn(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString());
     }
 
@@ -347,6 +431,7 @@ class AgentChatServiceTest {
         verify(fixture.memory, never()).appendSuccessfulTurn(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString());
     }
 
@@ -356,6 +441,7 @@ class AgentChatServiceTest {
                 Flux.just(text("完整回答")));
         doThrow(new IllegalStateException("memory write failed"))
                 .when(fixture.memory).appendSuccessfulTurn(
+                        org.mockito.ArgumentMatchers.anyString(),
                         org.mockito.ArgumentMatchers.anyString(),
                         org.mockito.ArgumentMatchers.anyString(),
                         org.mockito.ArgumentMatchers.anyString());
@@ -373,6 +459,16 @@ class AgentChatServiceTest {
     private static Fixture fixture(int maxToolCalls,
                                    Clock clock,
                                    boolean retrievalFails,
+                                   Flux<ChatClientResponse>... turns) {
+        return fixture(maxToolCalls, clock, retrievalFails,
+                com.wude.nexusmind.resilience.ProviderStreamingRetry.noRetry(), turns);
+    }
+
+    @SafeVarargs
+    private static Fixture fixture(int maxToolCalls,
+                                   Clock clock,
+                                   boolean retrievalFails,
+                                   com.wude.nexusmind.resilience.ProviderStreamingRetry streamingRetry,
                                    Flux<ChatClientResponse>... turns) {
         RetrievalService retrieval = mock(RetrievalService.class);
         when(retrieval.type()).thenReturn(RetrieverType.DENSE);
@@ -406,7 +502,15 @@ class AgentChatServiceTest {
         knowledgeBase.setStatus(KnowledgeBaseStatus.ACTIVE);
         when(knowledgeBaseService.get(33L)).thenReturn(knowledgeBase);
         AgentConversationMemoryService memory = mock(AgentConversationMemoryService.class);
-        when(memory.resolveSession(33L, null)).thenReturn("11111111-1111-1111-1111-111111111111");
+        when(memory.resolveSession(33L, null))
+                .thenReturn("11111111-1111-1111-1111-111111111111");
+        com.wude.nexusmind.agent.memory.AgentSessionConcurrencyService concurrency =
+                mock(com.wude.nexusmind.agent.memory.AgentSessionConcurrencyService.class);
+        when(concurrency.acquire(org.mockito.ArgumentMatchers.eq(33L),
+                org.mockito.ArgumentMatchers.nullable(String.class),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any())).thenAnswer(invocation ->
+                memory.resolveSession(33L, invocation.getArgument(1)));
         when(memory.loadRecentMessages("11111111-1111-1111-1111-111111111111", 12))
                 .thenReturn(List.of());
         AgentChatService service = new AgentChatService(
@@ -416,11 +520,20 @@ class AgentChatServiceTest {
                 new AgentToolSet(tool, contextTool),
                 new AgentPromptFactory(),
                 memory,
+                concurrency,
                 properties,
                 new RagChatProperties("qwen3.5-flash", 0.2, 5, 10, 12_000,
                         Duration.ofSeconds(120), Duration.ofSeconds(150)),
-                clock);
-        return new Fixture(service, retrieval, streamer, chunks, documents, memory);
+                clock,
+                streamingRetry);
+        return new Fixture(service, retrieval, streamer, chunks, documents, memory, concurrency);
+    }
+
+    private static com.wude.nexusmind.resilience.ProviderStreamingRetry retryingStreamingPolicy() {
+        return new com.wude.nexusmind.resilience.ProviderStreamingRetry(
+                new com.wude.nexusmind.resilience.AiResilienceProperties(
+                        2, Duration.ZERO, 1.0, Duration.ofNanos(1), Duration.ZERO),
+                new com.wude.nexusmind.resilience.ProviderFailureClassifier());
     }
 
     private static ToolCallingManager toolCallingManager() {
@@ -468,7 +581,8 @@ class AgentChatServiceTest {
                            QueueModelTurnStreamer streamer,
                            KnowledgeChunkMapper chunks,
                            KnowledgeDocumentMapper documents,
-                           AgentConversationMemoryService memory) {
+                           AgentConversationMemoryService memory,
+                           com.wude.nexusmind.agent.memory.AgentSessionConcurrencyService concurrency) {
 
         void stubVisibleContext() {
             KnowledgeChunk target = chunk(100L, 1, "target");

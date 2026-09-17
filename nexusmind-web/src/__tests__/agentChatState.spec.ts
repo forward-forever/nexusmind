@@ -109,6 +109,20 @@ describe('agentChatState', () => {
     expect(state.status).toBe('cancelled')
     expect(state.messages[1]).toMatchObject({ status: 'cancelled' })
   })
+
+  it('shows an agent session busy error without special retry behavior', () => {
+    let state = beginAgentRun(createInitialAgentChatState(), 'continue')
+    state = reduceAgentStreamEvent(
+      state,
+      baseEvent('error', {
+        code: 'AGENT_SESSION_BUSY',
+        message: '当前会话已有 Agent 请求正在执行，请稍后重试',
+      }),
+    )
+
+    expect(state.status).toBe('error')
+    expect(state.messages[1]?.run?.error).toContain('AGENT_SESSION_BUSY')
+  })
 })
 
 function baseEvent<T extends string, P extends object>(type: T, payload: P) {

@@ -25,6 +25,7 @@ HTTP Process / Index → MySQL Durable Task → Background Worker → Recovery
 V1 的完整启动和人工验收步骤见 [`docs/v1-demo.md`](docs/v1-demo.md)，V2 正式实验结论见 [`docs/v2-retrieval-quality.md`](docs/v2-retrieval-quality.md)。
 V3 的完整架构、Guardrails、Behavior Evaluation 与限制见 [`docs/v3-agent.md`](docs/v3-agent.md)。
 V4 异步文档任务的状态机、幂等与恢复设计见 [`docs/async-document-tasks.md`](docs/async-document-tasks.md)。
+V4 Provider 重试、Hybrid 并行与 Agent Session Lease 设计见 [`docs/resilience-concurrency.md`](docs/resilience-concurrency.md)。
 
 ## Retrieval Architecture
 
@@ -103,3 +104,4 @@ V1 Fixed RAG 与 V3 Agent 是两个独立入口：前者固定执行 Retrieval �
   - Agent Behavior Evaluation
 - V4 - Production Engineering（In Progress）
   - Durable Async Document Processing / Indexing ✅
+  - Provider Resilience / Parallel Hybrid / Agent Session Concurrency ✅

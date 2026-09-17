@@ -106,7 +106,11 @@ class AgentToolCallingLocalIT {
         knowledgeBase.setStatus(KnowledgeBaseStatus.ACTIVE);
         when(knowledgeBaseService.get(33L)).thenReturn(knowledgeBase);
         AgentConversationMemoryService memory = mock(AgentConversationMemoryService.class);
-        when(memory.resolveSession(33L, null)).thenReturn("11111111-1111-1111-1111-111111111111");
+        com.wude.nexusmind.agent.memory.AgentSessionConcurrencyService concurrency =
+                mock(com.wude.nexusmind.agent.memory.AgentSessionConcurrencyService.class);
+        when(concurrency.acquire(org.mockito.ArgumentMatchers.eq(33L),
+                org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any())).thenReturn("11111111-1111-1111-1111-111111111111");
         when(memory.loadRecentMessages("11111111-1111-1111-1111-111111111111", 12))
                 .thenReturn(List.of());
         ToolCallingManager manager = ToolCallingManager.builder()
@@ -119,10 +123,12 @@ class AgentToolCallingLocalIT {
                 new AgentToolSet(tool, contextTool),
                 new AgentPromptFactory(),
                 memory,
+                concurrency,
                 properties,
                 new RagChatProperties("qwen3.5-flash", 0.2, 5, 10, 12_000,
                         Duration.ofSeconds(120), Duration.ofSeconds(150)),
-                Clock.systemUTC());
+                Clock.systemUTC(),
+                com.wude.nexusmind.resilience.ProviderStreamingRetry.noRetry());
 
         List<ServerSentEvent<AgentStreamEvent>> events = new AgentChatController(service)
                 .chat(33L, new AgentChatRequest(null, "根据知识库解释 MVCC"))

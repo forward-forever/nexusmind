@@ -4,6 +4,7 @@ import com.wude.nexusmind.knowledge.domain.KnowledgeBase;
 import com.wude.nexusmind.model.config.EmbeddingProperties;
 import com.wude.nexusmind.rag.exception.EmbeddingConfigurationMismatchException;
 import com.wude.nexusmind.rag.exception.EmbeddingGenerationException;
+import com.wude.nexusmind.resilience.ProviderRetryExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -17,10 +18,18 @@ public class EmbeddingBatchService {
 
     private final EmbeddingModel embeddingModel;
     private final EmbeddingProperties properties;
+    private final ProviderRetryExecutor retryExecutor;
 
     public EmbeddingBatchService(EmbeddingModel embeddingModel, EmbeddingProperties properties) {
+        this(embeddingModel, properties, ProviderRetryExecutor.noRetry());
+    }
+
+    public EmbeddingBatchService(EmbeddingModel embeddingModel,
+                                 EmbeddingProperties properties,
+                                 ProviderRetryExecutor retryExecutor) {
         this.embeddingModel = embeddingModel;
         this.properties = properties;
+        this.retryExecutor = retryExecutor;
     }
 
     public void validateCompatibility(KnowledgeBase knowledgeBase) {
@@ -53,7 +62,11 @@ public class EmbeddingBatchService {
         }
         long startedAt = System.nanoTime();
         try {
-            List<float[]> vectors = embeddingModel.embed(List.copyOf(texts));
+            List<String> immutableTexts = List.copyOf(texts);
+            List<float[]> vectors = retryExecutor.execute(
+                    "openai-compatible-embedding",
+                    "embedding-batch",
+                    () -> embeddingModel.embed(immutableTexts));
             validateVectors(vectors, texts.size(), expectedDimension);
             log.info("Embedding batch completed: batch={}, size={}, chars={}, latencyMs={}, model={}, dimension={}",
                     batchNumber,

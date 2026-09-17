@@ -75,6 +75,9 @@ class AgentConversationMemoryLocalIT {
     private AgentConversationMemoryService memoryService;
 
     @Autowired
+    private AgentSessionConcurrencyService sessionConcurrencyService;
+
+    @Autowired
     private AgentMessageMapper messageMapper;
 
     @Autowired
@@ -85,7 +88,7 @@ class AgentConversationMemoryLocalIT {
 
     @Test
     void persistsFirstRunLoadsSecondRunAndKeepsMultiToolTraceOutOfMemory() {
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("4");
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("5");
         QueueModelTurnStreamer streamer = new QueueModelTurnStreamer(List.of(
                 Flux.just(text("我记住了。")),
                 Flux.just(toolCalls(searchCall("call-1", "MVCC Read View"))),
@@ -174,10 +177,11 @@ class AgentConversationMemoryLocalIT {
                 .build();
         return new AgentChatService(
                 knowledgeBases, streamer, manager, new AgentToolSet(searchTool, contextTool),
-                new AgentPromptFactory(), memoryService, properties,
+                new AgentPromptFactory(), memoryService, sessionConcurrencyService, properties,
                 new RagChatProperties("qwen3.5-flash", 0.2, 5, 10, 12_000,
                         Duration.ofSeconds(120), Duration.ofSeconds(150)),
-                Clock.systemUTC());
+                Clock.systemUTC(),
+                com.wude.nexusmind.resilience.ProviderStreamingRetry.noRetry());
     }
 
     private static KnowledgeChunk chunk(long id, int index, String content) {

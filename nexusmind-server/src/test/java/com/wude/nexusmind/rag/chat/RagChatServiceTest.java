@@ -12,13 +12,18 @@ import com.wude.nexusmind.rag.retrieval.RetrievalService;
 import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
 import com.wude.nexusmind.rag.retrieval.RagRetrievalProperties;
 import com.wude.nexusmind.rag.retrieval.RetrieverType;
+import com.wude.nexusmind.resilience.AiResilienceProperties;
+import com.wude.nexusmind.resilience.ProviderFailureClassifier;
+import com.wude.nexusmind.resilience.ProviderStreamingRetry;
 import org.junit.jupiter.api.Test;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 
+import java.net.SocketTimeoutException;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -99,6 +104,42 @@ class RagChatServiceTest {
     }
 
     @Test
+    void retriesModelFailureBeforeFirstDelta() {
+        AtomicInteger attempts = new AtomicInteger();
+        Flux<String> model = Flux.defer(() -> attempts.incrementAndGet() == 1
+                ? Flux.error(new IllegalStateException(new SocketTimeoutException("temporary")))
+                : Flux.just("complete"));
+        Fixture fixture = fixture(model, Duration.ofMinutes(2), retryingStreamingPolicy());
+
+        List<RagStreamEvent> events = fixture.service.stream(7L, "question", 3)
+                .collectList().block();
+
+        assertThat(events).extracting(RagStreamEvent::type)
+                .containsExactly("sources", "delta", "done");
+        assertThat(events.get(1).content()).isEqualTo("complete");
+        assertThat(attempts).hasValue(2);
+    }
+
+    @Test
+    void doesNotRetryModelFailureAfterFirstDelta() {
+        AtomicInteger attempts = new AtomicInteger();
+        Flux<String> model = Flux.defer(() -> {
+            attempts.incrementAndGet();
+            return Flux.concat(
+                    Flux.just("partial"),
+                    Flux.error(new IllegalStateException(new SocketTimeoutException("temporary"))));
+        });
+        Fixture fixture = fixture(model, Duration.ofMinutes(2), retryingStreamingPolicy());
+
+        List<RagStreamEvent> events = fixture.service.stream(7L, "question", 3)
+                .collectList().block();
+
+        assertThat(events).extracting(RagStreamEvent::type)
+                .containsExactly("sources", "delta", "error");
+        assertThat(attempts).hasValue(1);
+    }
+
+    @Test
     void retrievalFailureIsThrownSynchronouslyBeforeAFluxIsReturned() {
         RetrievalService retrieval = mock(RetrievalService.class);
         when(retrieval.retrieve(7L, "question", 5)).thenThrow(new IllegalStateException("milvus unavailable"));
@@ -165,6 +206,12 @@ class RagChatServiceTest {
     }
 
     private static Fixture fixture(Flux<String> modelFlux, Duration streamTimeout) {
+        return fixture(modelFlux, streamTimeout, ProviderStreamingRetry.noRetry());
+    }
+
+    private static Fixture fixture(Flux<String> modelFlux,
+                                   Duration streamTimeout,
+                                   ProviderStreamingRetry streamingRetry) {
         RetrievalService retrieval = mock(RetrievalService.class);
         RagContextBuilder contextBuilder = mock(RagContextBuilder.class);
         ChatAnswerStreamer streamer = mock(ChatAnswerStreamer.class);
@@ -181,7 +228,8 @@ class RagChatServiceTest {
                         RetrievalScoreType.COSINE, 5, List.of(hit)));
         when(contextBuilder.build(List.of(hit))).thenReturn(context);
         when(streamer.stream(org.mockito.ArgumentMatchers.any())).thenReturn(modelFlux);
-        return new Fixture(service(retrieval, contextBuilder, streamer, streamTimeout), retrieval);
+        return new Fixture(service(
+                retrieval, contextBuilder, streamer, streamTimeout, streamingRetry), retrieval);
     }
 
     private static RagChatService service(RetrievalService retrieval,
@@ -201,6 +249,15 @@ class RagChatServiceTest {
                                           RagContextBuilder contextBuilder,
                                           ChatAnswerStreamer streamer,
                                           Duration streamTimeout) {
+        return service(retrieval, contextBuilder, streamer, streamTimeout,
+                ProviderStreamingRetry.noRetry());
+    }
+
+    private static RagChatService service(RetrievalService retrieval,
+                                          RagContextBuilder contextBuilder,
+                                          ChatAnswerStreamer streamer,
+                                          Duration streamTimeout,
+                                          ProviderStreamingRetry streamingRetry) {
         when(retrieval.type()).thenReturn(RetrieverType.DENSE);
         return new RagChatService(
                 new RetrievalServiceRegistry(List.of(retrieval)),
@@ -208,7 +265,15 @@ class RagChatServiceTest {
                 contextBuilder,
                 new RagPromptFactory(),
                 streamer,
-                properties(streamTimeout));
+                properties(streamTimeout),
+                streamingRetry);
+    }
+
+    private static ProviderStreamingRetry retryingStreamingPolicy() {
+        return new ProviderStreamingRetry(
+                new AiResilienceProperties(
+                        2, Duration.ZERO, 1.0, Duration.ofNanos(1), Duration.ZERO),
+                new ProviderFailureClassifier());
     }
 
     private static RagChatProperties properties(Duration streamTimeout) {

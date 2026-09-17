@@ -10,6 +10,10 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.client.HttpServerErrorException;
+import com.wude.nexusmind.resilience.ProviderRetryExecutorTest;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -97,6 +101,19 @@ class EmbeddingBatchServiceTest {
     }
 
     @Test
+    void retriesTheSameWholeEmbeddingBatchAfterTransient503() {
+        StubEmbeddingModel model = new StubEmbeddingModel(4);
+        model.transientFailures = 1;
+        EmbeddingBatchService service = new EmbeddingBatchService(
+                model,
+                new EmbeddingProperties("qwen3.7-text-embedding-flash", 4, 20, 7_500),
+                ProviderRetryExecutorTest.executor(2));
+
+        assertThat(service.embedBatch(List.of("one", "two"), 4, 1)).hasSize(2);
+        assertThat(model.batchSizes).containsExactly(2, 2);
+    }
+
+    @Test
     void rejectsKnowledgeBaseWhoseFrozenEmbeddingConfigDiffersFromRuntime() {
         EmbeddingBatchService service = service(new StubEmbeddingModel(4), 20);
         KnowledgeBase knowledgeBase = new KnowledgeBase(
@@ -123,6 +140,7 @@ class EmbeddingBatchServiceTest {
         private final List<Integer> batchSizes = new ArrayList<>();
         private boolean dropLastVector;
         private RuntimeException failure;
+        private int transientFailures;
 
         StubEmbeddingModel(int dimension) {
             this.dimension = dimension;
@@ -131,6 +149,11 @@ class EmbeddingBatchServiceTest {
         @Override
         public List<float[]> embed(List<String> texts) {
             batchSizes.add(texts.size());
+            if (transientFailures-- > 0) {
+                throw HttpServerErrorException.create(
+                        HttpStatus.SERVICE_UNAVAILABLE, "unavailable",
+                        HttpHeaders.EMPTY, null, null);
+            }
             if (failure != null) {
                 throw failure;
             }

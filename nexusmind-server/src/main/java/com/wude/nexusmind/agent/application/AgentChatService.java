@@ -2,6 +2,9 @@ package com.wude.nexusmind.agent.application;
 
 import com.wude.nexusmind.agent.config.AgentProperties;
 import com.wude.nexusmind.agent.memory.AgentConversationMemoryService;
+import com.wude.nexusmind.agent.memory.AgentSessionBusyException;
+import com.wude.nexusmind.agent.memory.AgentSessionConcurrencyService;
+import com.wude.nexusmind.agent.memory.AgentSessionLeaseLostException;
 import com.wude.nexusmind.agent.prompt.AgentPromptFactory;
 import com.wude.nexusmind.agent.stream.AgentStreamEvent;
 import com.wude.nexusmind.agent.stream.AgentToolEventPublisher;
@@ -12,6 +15,7 @@ import com.wude.nexusmind.knowledge.domain.KnowledgeBaseStatus;
 import com.wude.nexusmind.knowledge.service.KnowledgeBaseService;
 import com.wude.nexusmind.model.config.RagChatProperties;
 import com.wude.nexusmind.rag.exception.KnowledgeBaseInactiveException;
+import com.wude.nexusmind.resilience.ProviderStreamingRetry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClientMessageAggregator;
@@ -37,6 +41,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Service
@@ -51,9 +57,11 @@ public class AgentChatService {
     private final AgentToolSet toolSet;
     private final AgentPromptFactory promptFactory;
     private final AgentConversationMemoryService memoryService;
+    private final AgentSessionConcurrencyService sessionConcurrencyService;
     private final AgentProperties properties;
     private final RagChatProperties chatProperties;
     private final Clock clock;
+    private final ProviderStreamingRetry streamingRetry;
 
     public AgentChatService(KnowledgeBaseService knowledgeBaseService,
                             AgentModelTurnStreamer modelTurnStreamer,
@@ -61,18 +69,22 @@ public class AgentChatService {
                             AgentToolSet toolSet,
                             AgentPromptFactory promptFactory,
                             AgentConversationMemoryService memoryService,
+                            AgentSessionConcurrencyService sessionConcurrencyService,
                             AgentProperties properties,
                             RagChatProperties chatProperties,
-                            Clock clock) {
+                            Clock clock,
+                            ProviderStreamingRetry streamingRetry) {
         this.knowledgeBaseService = knowledgeBaseService;
         this.modelTurnStreamer = modelTurnStreamer;
         this.toolCallingManager = toolCallingManager;
         this.toolSet = toolSet;
         this.promptFactory = promptFactory;
         this.memoryService = memoryService;
+        this.sessionConcurrencyService = sessionConcurrencyService;
         this.properties = properties;
         this.chatProperties = chatProperties;
         this.clock = clock;
+        this.streamingRetry = streamingRetry;
     }
 
     public Flux<AgentStreamEvent> chat(long knowledgeBaseId, String message) {
@@ -84,16 +96,32 @@ public class AgentChatService {
                                        String message) {
         String normalizedMessage = requireMessage(message);
         validateKnowledgeBase(knowledgeBaseId);
-        String sessionId = memoryService.resolveSession(knowledgeBaseId, requestedSessionId);
-        List<Message> history = memoryService.loadRecentMessages(
-                sessionId, properties.memory().maxMessages());
+        String runId = UUID.randomUUID().toString();
 
         return Flux.defer(() -> {
+            String sessionId;
+            try {
+                sessionId = sessionConcurrencyService.acquire(
+                        knowledgeBaseId, requestedSessionId, runId,
+                        properties.sessionConcurrency().leaseDuration());
+            } catch (AgentSessionBusyException busy) {
+                AgentExecutionException failure = AgentExecutionException.sessionBusy();
+                return Flux.just(AgentStreamEvent.error(
+                        runId, busy.sessionId(), failure.code(), failure.clientMessage()));
+            }
+            List<Message> history;
+            try {
+                history = memoryService.loadRecentMessages(
+                        sessionId, properties.memory().maxMessages());
+            } catch (RuntimeException failure) {
+                sessionConcurrencyService.release(sessionId, runId);
+                throw failure;
+            }
             Sinks.Many<AgentStreamEvent> eventSink = Sinks.many().unicast().onBackpressureBuffer();
             Object emissionLock = new Object();
             AgentToolEventPublisher publisher = event -> emit(eventSink, emissionLock, event);
             AgentRunContext runContext = new AgentRunContext(
-                    sessionId, knowledgeBaseId, history.size(),
+                    runId, sessionId, knowledgeBaseId, history.size(),
                     properties.maxDuration(), clock, publisher);
             ToolCallingChatOptions options = ToolCallingChatOptions.builder()
                     .model(chatProperties.model())
@@ -107,7 +135,10 @@ public class AgentChatService {
 
             Mono<Void> execution = runLoop(runContext, prompt, normalizedMessage)
                     .onErrorResume(error -> finishWithError(runContext, error))
-                    .doFinally(signal -> complete(eventSink, emissionLock));
+                    .doFinally(signal -> {
+                        sessionConcurrencyService.release(sessionId, runId);
+                        complete(eventSink, emissionLock);
+                    });
 
             return Flux.merge(eventSink.asFlux(), execution.thenMany(Flux.empty()))
                     .doOnCancel(() -> log.info(
@@ -163,10 +194,12 @@ public class AgentChatService {
                                              String assistantContent) {
         Duration remaining = runContext.remaining();
         return Mono.fromRunnable(() -> memoryService.appendSuccessfulTurn(
-                        runContext.sessionId(), userContent, assistantContent))
+                        runContext.sessionId(), runContext.runId(), userContent, assistantContent))
                 .subscribeOn(Schedulers.boundedElastic())
                 .timeout(remaining)
                 .onErrorMap(TimeoutException.class, ignored -> AgentExecutionException.timeout())
+                .onErrorMap(AgentSessionLeaseLostException.class,
+                        AgentExecutionException::leaseLost)
                 .then(Mono.fromRunnable(() -> runContext.publish(AgentStreamEvent.done(
                         runContext.runId(), runContext.sessionId(), runContext.toolCallCount(),
                         runContext.modelTurnCount(), runContext.elapsedMillis(),
@@ -175,14 +208,37 @@ public class AgentChatService {
 
     private Mono<ChatResponse> streamModelTurn(AgentRunContext runContext, Prompt prompt) {
         AtomicReference<ChatClientResponse> aggregated = new AtomicReference<>();
+        AtomicBoolean assistantDeltaPublished = new AtomicBoolean();
         Duration remaining = runContext.remaining();
         return new ChatClientMessageAggregator()
                 .aggregateChatClientResponse(
-                        modelTurnStreamer.stream(prompt).timeout(remaining),
+                        streamingRetry.execute(
+                                        "openai-compatible-chat", "agent-model-turn",
+                                        () -> modelTurnStreamer.stream(prompt),
+                                        () -> assistantDeltaPublished.get()
+                                                || runContext.toolCallCount() > 0,
+                                        runContext::remaining,
+                                        AgentExecutionException::timeout)
+                                .timeout(remaining),
                         aggregated::set)
-                .doOnNext(chunk -> publishAssistantDelta(runContext, chunk))
+                .doOnNext(chunk -> {
+                    if (hasVisibleAssistantContent(chunk)) {
+                        assistantDeltaPublished.set(true);
+                    }
+                    publishAssistantDelta(runContext, chunk);
+                })
                 .then(Mono.fromSupplier(() -> requireChatResponse(aggregated.get())))
                 .onErrorMap(error -> mapModelError(error));
+    }
+
+    private static boolean hasVisibleAssistantContent(ChatClientResponse chunk) {
+        if (chunk == null || chunk.chatResponse() == null
+                || chunk.chatResponse().getResult() == null
+                || chunk.chatResponse().getResult().getOutput() == null) {
+            return false;
+        }
+        String content = chunk.chatResponse().getResult().getOutput().getText();
+        return content != null && !content.isEmpty();
     }
 
     private Mono<ToolExecutionResult> executeToolCalls(AgentRunContext runContext,
@@ -266,6 +322,9 @@ public class AgentChatService {
         }
         if (error instanceof TimeoutException) {
             return AgentExecutionException.timeout();
+        }
+        if (hasCause(error, AgentSessionLeaseLostException.class)) {
+            return AgentExecutionException.leaseLost(error);
         }
         return AgentExecutionException.model(error);
     }

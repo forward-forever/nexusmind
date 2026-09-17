@@ -6,6 +6,9 @@ public class AgentSessionEntity {
 
     private String sessionId;
     private Long knowledgeBaseId;
+    private String activeRunId;
+    private LocalDateTime runAcquiredAt;
+    private LocalDateTime runLeaseUntil;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -31,6 +34,30 @@ public class AgentSessionEntity {
 
     public void setKnowledgeBaseId(Long knowledgeBaseId) {
         this.knowledgeBaseId = knowledgeBaseId;
+    }
+
+    public String getActiveRunId() {
+        return activeRunId;
+    }
+
+    public void setActiveRunId(String activeRunId) {
+        this.activeRunId = activeRunId;
+    }
+
+    public LocalDateTime getRunAcquiredAt() {
+        return runAcquiredAt;
+    }
+
+    public void setRunAcquiredAt(LocalDateTime runAcquiredAt) {
+        this.runAcquiredAt = runAcquiredAt;
+    }
+
+    public LocalDateTime getRunLeaseUntil() {
+        return runLeaseUntil;
+    }
+
+    public void setRunLeaseUntil(LocalDateTime runLeaseUntil) {
+        this.runLeaseUntil = runLeaseUntil;
     }
 
     public LocalDateTime getCreatedAt() {

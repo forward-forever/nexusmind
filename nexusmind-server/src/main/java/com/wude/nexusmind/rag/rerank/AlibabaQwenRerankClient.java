@@ -2,6 +2,7 @@ package com.wude.nexusmind.rag.rerank;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.wude.nexusmind.model.config.RerankProviderProperties;
+import com.wude.nexusmind.resilience.ProviderRetryExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.client.RestClient;
@@ -18,17 +19,32 @@ public class AlibabaQwenRerankClient implements RerankClient {
 
     private final RestClient restClient;
     private final RerankProviderProperties properties;
+    private final ProviderRetryExecutor retryExecutor;
     private final LongSupplier nanoTime;
 
     public AlibabaQwenRerankClient(RestClient restClient, RerankProviderProperties properties) {
-        this(restClient, properties, System::nanoTime);
+        this(restClient, properties, ProviderRetryExecutor.noRetry(), System::nanoTime);
+    }
+
+    public AlibabaQwenRerankClient(RestClient restClient,
+                                   RerankProviderProperties properties,
+                                   ProviderRetryExecutor retryExecutor) {
+        this(restClient, properties, retryExecutor, System::nanoTime);
     }
 
     AlibabaQwenRerankClient(RestClient restClient,
                             RerankProviderProperties properties,
                             LongSupplier nanoTime) {
+        this(restClient, properties, ProviderRetryExecutor.noRetry(), nanoTime);
+    }
+
+    AlibabaQwenRerankClient(RestClient restClient,
+                            RerankProviderProperties properties,
+                            ProviderRetryExecutor retryExecutor,
+                            LongSupplier nanoTime) {
         this.restClient = restClient;
         this.properties = properties;
+        this.retryExecutor = retryExecutor;
         this.nanoTime = nanoTime;
     }
 
@@ -42,11 +58,14 @@ public class AlibabaQwenRerankClient implements RerankClient {
         long startedAt = nanoTime.getAsLong();
         try {
             // https://help.aliyun.com/zh/model-studio/text-rerank-api
-            ApiResponse response = restClient.post()
-                    .uri(RERANK_PATH)
-                    .body(request)
-                    .retrieve()
-                    .body(ApiResponse.class);
+            ApiResponse response = retryExecutor.execute(
+                    "alibaba-model-studio",
+                    "text-rerank",
+                    () -> restClient.post()
+                            .uri(RERANK_PATH)
+                            .body(request)
+                            .retrieve()
+                            .body(ApiResponse.class));
             long latencyMs = elapsedMillis(startedAt);
             RerankResult result = toResult(response, latencyMs);
             LOGGER.info("Rerank completed: model={}, candidates={}, returned={}, latencyMs={}, "

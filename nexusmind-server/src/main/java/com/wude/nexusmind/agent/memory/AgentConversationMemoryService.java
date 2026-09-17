@@ -76,13 +76,30 @@ public class AgentConversationMemoryService {
     public void appendSuccessfulTurn(String sessionId,
                                      String userContent,
                                      String assistantContent) {
+        appendMessages(sessionId, userContent, assistantContent, sessionMapper.touch(sessionId));
+    }
+
+    @Transactional
+    public void appendSuccessfulTurn(String sessionId,
+                                     String runId,
+                                     String userContent,
+                                     String assistantContent) {
+        sessionMapper.findOwnedByIdForUpdate(sessionId, runId)
+                .orElseThrow(() -> new AgentSessionLeaseLostException(sessionId));
+        appendMessages(sessionId, userContent, assistantContent,
+                sessionMapper.touchOwned(sessionId, runId));
+    }
+
+    private void appendMessages(String sessionId,
+                                String userContent,
+                                String assistantContent,
+                                int touched) {
         requireContent(userContent, 4_000, "User message");
         requireContent(assistantContent, MAX_ASSISTANT_CONTENT_CHARS, "Assistant message");
         int userInserted = messageMapper.insert(new AgentMessageEntity(
                 sessionId, AgentMessageRole.USER, userContent));
         int assistantInserted = messageMapper.insert(new AgentMessageEntity(
                 sessionId, AgentMessageRole.ASSISTANT, assistantContent));
-        int touched = sessionMapper.touch(sessionId);
         if (userInserted != 1 || assistantInserted != 1 || touched != 1) {
             throw new IllegalStateException("Could not persist complete agent conversation turn");
         }

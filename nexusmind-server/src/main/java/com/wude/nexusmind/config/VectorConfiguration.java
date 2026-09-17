@@ -18,10 +18,16 @@ import com.wude.nexusmind.rag.retrieval.ReciprocalRankFusion;
 import io.milvus.v2.client.ConnectConfig;
 import io.milvus.v2.client.MilvusClientV2;
 import org.springframework.ai.embedding.EmbeddingModel;
+import com.wude.nexusmind.resilience.ProviderRetryExecutor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+
+import java.util.concurrent.Executor;
+import java.util.concurrent.ThreadPoolExecutor;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties({EmbeddingProperties.class, MilvusProperties.class})
@@ -31,8 +37,9 @@ public class VectorConfiguration {
     @ConditionalOnProperty(name = "nexusmind.vector.enabled", havingValue = "true")
     @ConditionalOnProperty(name = "spring.ai.model.embedding", havingValue = "openai")
     EmbeddingBatchService embeddingBatchService(EmbeddingModel embeddingModel,
-                                                EmbeddingProperties embeddingProperties) {
-        return new EmbeddingBatchService(embeddingModel, embeddingProperties);
+                                                EmbeddingProperties embeddingProperties,
+                                                ProviderRetryExecutor retryExecutor) {
+        return new EmbeddingBatchService(embeddingModel, embeddingProperties, retryExecutor);
     }
 
     @Bean
@@ -75,6 +82,21 @@ public class VectorConfiguration {
         return new ReciprocalRankFusion();
     }
 
+    @Bean(name = "retrievalRouteExecutor")
+    @ConditionalOnProperty(name = "nexusmind.vector.enabled", havingValue = "true")
+    ThreadPoolTaskExecutor retrievalRouteExecutor(HybridRetrievalProperties properties) {
+        HybridRetrievalProperties.Parallel parallel = properties.parallel();
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setThreadNamePrefix("retrieval-route-");
+        executor.setCorePoolSize(parallel.corePoolSize());
+        executor.setMaxPoolSize(parallel.maxPoolSize());
+        executor.setQueueCapacity(parallel.queueCapacity());
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(15);
+        return executor;
+    }
+
     @Bean
     @ConditionalOnProperty(name = "nexusmind.vector.enabled", havingValue = "true")
     @ConditionalOnProperty(name = "spring.ai.model.embedding", havingValue = "openai")
@@ -83,9 +105,11 @@ public class VectorConfiguration {
             Bm25RetrievalService bm25RetrievalService,
             HybridRouteCandidatePlanner candidatePlanner,
             ReciprocalRankFusion fusion,
-            HybridRetrievalProperties properties) {
+            HybridRetrievalProperties properties,
+            @Qualifier("retrievalRouteExecutor") Executor routeExecutor) {
         return new HybridRrfRetrievalService(
-                denseRetrievalService, bm25RetrievalService, candidatePlanner, fusion, properties);
+                denseRetrievalService, bm25RetrievalService, candidatePlanner, fusion,
+                properties, properties.parallel().enabled() ? routeExecutor : Runnable::run);
     }
 
     @Bean
