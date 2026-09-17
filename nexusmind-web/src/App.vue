@@ -5,6 +5,7 @@ import AgentChatPanel from '@/components/AgentChatPanel.vue'
 import KnowledgeBasePanel from '@/components/KnowledgeBasePanel.vue'
 import RagChatPanel from '@/components/RagChatPanel.vue'
 import RetrievalDebugPanel from '@/components/RetrievalDebugPanel.vue'
+import WorkspaceContextBar from '@/components/WorkspaceContextBar.vue'
 import { createKnowledgeBase, listKnowledgeBases } from '@/api/knowledge'
 import { indexDocument, listDocuments, processDocument, uploadDocument } from '@/api/document'
 import { errorMessage } from '@/api/http'
@@ -13,6 +14,14 @@ import type { DocumentSummary } from '@/types/document'
 
 type NoticeKind = 'success' | 'info' | 'error'
 type DocumentAction = 'process' | 'index' | 'prepare'
+type WorkspaceTab = 'knowledge' | 'agent' | 'rag' | 'retrieval'
+
+const workspaceTabs: ReadonlyArray<{ id: WorkspaceTab; label: string }> = [
+  { id: 'knowledge', label: 'Knowledge' },
+  { id: 'agent', label: 'Agent Chat' },
+  { id: 'rag', label: 'RAG Chat' },
+  { id: 'retrieval', label: 'Retrieval Lab' },
+]
 
 const knowledgeBases = ref<KnowledgeBase[]>([])
 const selectedKnowledgeBaseId = ref<number | null>(null)
@@ -24,6 +33,7 @@ const uploadBusy = ref(false)
 const activeDocumentId = ref<number | null>(null)
 const activeDocumentAction = ref<DocumentAction | null>(null)
 const notice = ref<{ kind: NoticeKind; message: string } | null>(null)
+const activeTab = ref<WorkspaceTab>('knowledge')
 let noticeTimer: ReturnType<typeof setTimeout> | null = null
 let documentLoadVersion = 0
 
@@ -35,6 +45,9 @@ const selectedKnowledgeBase = computed(
 )
 const hasIndexedDocument = computed(() =>
   documents.value.some((document) => document.indexStatus === 'INDEXED'),
+)
+const indexedDocumentCount = computed(
+  () => documents.value.filter((document) => document.indexStatus === 'INDEXED').length,
 )
 
 onMounted(() => void refreshKnowledgeBases())
@@ -193,67 +206,149 @@ function showNotice(kind: NoticeKind, message: string): void {
       <button type="button" aria-label="Dismiss notification" @click="notice = null">×</button>
     </div>
 
-    <div class="workspace">
-      <KnowledgeBasePanel
-        :knowledge-bases="knowledgeBases"
-        :selected-id="selectedKnowledgeBaseId"
-        :loading="loadingKnowledgeBases"
-        :creating="creatingKnowledgeBase"
-        @select="selectedKnowledgeBaseId = $event"
-        @create="handleCreate"
-      />
+    <nav class="workbench-tabs" role="tablist" aria-label="NexusMind workbench">
+      <button
+        v-for="tab in workspaceTabs"
+        :id="`tab-${tab.id}`"
+        :key="tab.id"
+        role="tab"
+        type="button"
+        :aria-controls="`panel-${tab.id}`"
+        :aria-selected="activeTab === tab.id"
+        :tabindex="activeTab === tab.id ? 0 : -1"
+        @click="activeTab = tab.id"
+      >
+        {{ tab.label }}
+      </button>
+    </nav>
 
-      <main class="main-content">
-        <template v-if="selectedKnowledgeBase">
-          <div class="workspace-title">
-            <div>
-              <p class="eyebrow">Current knowledge base</p>
-              <h2>{{ selectedKnowledgeBase.name }}</h2>
+    <main class="workbench-content">
+      <section
+        v-show="activeTab === 'knowledge'"
+        id="panel-knowledge"
+        class="knowledge-workspace"
+        role="tabpanel"
+        aria-labelledby="tab-knowledge"
+      >
+        <KnowledgeBasePanel
+          :knowledge-bases="knowledgeBases"
+          :selected-id="selectedKnowledgeBaseId"
+          :loading="loadingKnowledgeBases"
+          :creating="creatingKnowledgeBase"
+          @select="selectedKnowledgeBaseId = $event"
+          @create="handleCreate"
+        />
+        <div class="knowledge-document-workspace">
+          <template v-if="selectedKnowledgeBase">
+            <div class="workspace-title">
+              <div>
+                <p class="eyebrow">Current knowledge base</p>
+                <h2>{{ selectedKnowledgeBase.name }}</h2>
+              </div>
+              <span class="runtime-badge">
+                {{ selectedKnowledgeBase.embeddingDimension }}d · COSINE
+              </span>
             </div>
-            <span class="runtime-badge">
-              {{ selectedKnowledgeBase.embeddingDimension }}d · COSINE
-            </span>
-          </div>
+            <DocumentPanel
+              :documents="documents"
+              :loading="loadingDocuments"
+              :upload-busy="uploadBusy"
+              :active-document-id="activeDocumentId"
+              :active-action="activeDocumentAction"
+              @upload="handleUpload"
+              @process="handleProcess"
+              @index="handleIndex"
+              @prepare="handlePrepare"
+            />
+          </template>
+          <section v-else class="empty-workspace">
+            <p class="eyebrow">Knowledge workspace</p>
+            <h2>Create your first Knowledge Base</h2>
+            <p>Then upload, process, and index a PDF, Markdown, or TXT document.</p>
+          </section>
+        </div>
+      </section>
 
-          <DocumentPanel
-            :documents="documents"
-            :loading="loadingDocuments"
-            :upload-busy="uploadBusy"
-            :active-document-id="activeDocumentId"
-            :active-action="activeDocumentAction"
-            @upload="handleUpload"
-            @process="handleProcess"
-            @index="handleIndex"
-            @prepare="handlePrepare"
-          />
-
-          <RagChatPanel
-            :key="selectedKnowledgeBase.id"
-            :knowledge-base-id="selectedKnowledgeBase.id"
-            :knowledge-base-name="selectedKnowledgeBase.name"
-            :ready="hasIndexedDocument"
-          />
-
-          <AgentChatPanel
-            :key="`agent-${selectedKnowledgeBase.id}`"
-            :knowledge-base-id="selectedKnowledgeBase.id"
-            :knowledge-base-name="selectedKnowledgeBase.name"
-            :ready="hasIndexedDocument"
-          />
-
-          <RetrievalDebugPanel
-            :key="`retrieval-${selectedKnowledgeBase.id}`"
-            :knowledge-base-id="selectedKnowledgeBase.id"
-            :knowledge-base-name="selectedKnowledgeBase.name"
-            :ready="hasIndexedDocument"
-          />
-        </template>
-        <section v-else class="empty-workspace">
-          <p class="eyebrow">NexusMind V3</p>
-          <h2>Create a Knowledge Base to begin</h2>
-          <p>Upload, process, index, and ask grounded questions—all from this page.</p>
+      <section
+        v-show="activeTab === 'agent'"
+        id="panel-agent"
+        class="functional-workspace"
+        role="tabpanel"
+        aria-labelledby="tab-agent"
+      >
+        <WorkspaceContextBar
+          :knowledge-bases="knowledgeBases"
+          :selected-id="selectedKnowledgeBaseId"
+          :selected-knowledge-base="selectedKnowledgeBase"
+          :document-count="documents.length"
+          :indexed-document-count="indexedDocumentCount"
+          @select="selectedKnowledgeBaseId = $event"
+        />
+        <AgentChatPanel
+          v-if="selectedKnowledgeBase"
+          :key="`agent-${selectedKnowledgeBase.id}`"
+          :knowledge-base-id="selectedKnowledgeBase.id"
+          :knowledge-base-name="selectedKnowledgeBase.name"
+          :ready="hasIndexedDocument"
+        />
+        <section v-else class="empty-workspace functional-empty">
+          <h2>Select or create a Knowledge Base first</h2>
         </section>
-      </main>
-    </div>
+      </section>
+
+      <section
+        v-show="activeTab === 'rag'"
+        id="panel-rag"
+        class="functional-workspace"
+        role="tabpanel"
+        aria-labelledby="tab-rag"
+      >
+        <WorkspaceContextBar
+          :knowledge-bases="knowledgeBases"
+          :selected-id="selectedKnowledgeBaseId"
+          :selected-knowledge-base="selectedKnowledgeBase"
+          :document-count="documents.length"
+          :indexed-document-count="indexedDocumentCount"
+          @select="selectedKnowledgeBaseId = $event"
+        />
+        <RagChatPanel
+          v-if="selectedKnowledgeBase"
+          :key="`rag-${selectedKnowledgeBase.id}`"
+          :knowledge-base-id="selectedKnowledgeBase.id"
+          :knowledge-base-name="selectedKnowledgeBase.name"
+          :ready="hasIndexedDocument"
+        />
+        <section v-else class="empty-workspace functional-empty">
+          <h2>Select or create a Knowledge Base first</h2>
+        </section>
+      </section>
+
+      <section
+        v-show="activeTab === 'retrieval'"
+        id="panel-retrieval"
+        class="functional-workspace"
+        role="tabpanel"
+        aria-labelledby="tab-retrieval"
+      >
+        <WorkspaceContextBar
+          :knowledge-bases="knowledgeBases"
+          :selected-id="selectedKnowledgeBaseId"
+          :selected-knowledge-base="selectedKnowledgeBase"
+          :document-count="documents.length"
+          :indexed-document-count="indexedDocumentCount"
+          @select="selectedKnowledgeBaseId = $event"
+        />
+        <RetrievalDebugPanel
+          v-if="selectedKnowledgeBase"
+          :key="`retrieval-${selectedKnowledgeBase.id}`"
+          :knowledge-base-id="selectedKnowledgeBase.id"
+          :knowledge-base-name="selectedKnowledgeBase.name"
+          :ready="hasIndexedDocument"
+        />
+        <section v-else class="empty-workspace functional-empty">
+          <h2>Select or create a Knowledge Base first</h2>
+        </section>
+      </section>
+    </main>
   </div>
 </template>

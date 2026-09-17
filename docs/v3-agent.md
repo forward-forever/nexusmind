@@ -73,7 +73,15 @@ Session
 
 `S1`, `S2`, and related IDs belong to one Agent Run and are not persisted as Session identity. Historical Assistant text is stored exactly as the user saw it, but stale `[S<number>]` markers are removed before injection into a later prompt. Only current-run tool sources are valid citations.
 
-The Web UI parses citations as text segments, shows final Source cards, and never renders model output through `v-html`.
+The Web UI scopes Source DOM identity by `runId + sourceId`, so two Runs may both use `S1` without collision. Citation clicks expand and highlight only the Source card from the originating Run.
+
+Model Markdown is rendered with raw HTML disabled, sanitized with DOMPurify, and then displayed. Citation tokens are created by the application renderer rather than accepted as model-generated HTML.
+
+## Agent Workbench UI
+
+The Vue SPA is organized as a tabbed Workbench: `Knowledge`, `Agent Chat`, `RAG Chat`, and `Retrieval Lab`. Functional tabs share one global Knowledge Base selector. Tab changes keep mounted Agent/RAG/Retrieval state, while changing the selected Knowledge Base intentionally resets KB-bound Session and query state.
+
+The Agent Chat tab provides a viewport-sized conversation area, streaming Assistant output, a stable composer, collapsible Tool Trace, collapsible run-scoped Sources, and safe clickable citations. It exposes observable tool lifecycle only and never hidden reasoning.
 
 ## Structured SSE and Tool Trace
 
@@ -127,5 +135,6 @@ Reports are JSON plus Markdown. A non-perfect result is retained as actual model
 8. Browser/model/tool cancellation is best effort.
 9. V3 has exactly two read-only knowledge tools.
 10. Agent behavior evaluation is deliberately small and behavior-only.
+11. Real behavior evaluation uses the normal Agent application path and therefore persists its evaluation conversation sessions in the configured database.
 
 These limitations are recorded for later engineering work; V3 does not pre-implement V4 mechanisms.

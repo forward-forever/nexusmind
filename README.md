@@ -19,7 +19,7 @@ Agent → qwen3.5-flash tool decision → KnowledgeSearchTool / DocumentContextT
       → Multi-step tool loop → Conversation Memory → final answer + Tool Trace
 ```
 
-支持 PDF、Markdown 和 UTF-8 TXT。Web UI 可创建 Knowledge Base、管理 Document 的 Process/Index 阶段，通过 POST SSE 展示真实增量回答和稳定 Source ID Citation，并并排检查 DENSE、BM25、HYBRID_RRF、HYBRID_RERANK 的单 Query 结果与 provenance。
+支持 PDF、Markdown 和 UTF-8 TXT。Web 端是一个 tabbed NexusMind Workbench：`Knowledge` 管理 Knowledge Base 与文档，`Agent Chat` 展示 Tool Calling 与跨轮 Session，`RAG Chat` 保留固定 RAG，`Retrieval Lab` 并排检查 DENSE、BM25、HYBRID_RRF、HYBRID_RERANK 的单 Query 结果与 provenance。
 
 V1 的完整启动和人工验收步骤见 [`docs/v1-demo.md`](docs/v1-demo.md)，V2 正式实验结论见 [`docs/v2-retrieval-quality.md`](docs/v2-retrieval-quality.md)。
 V3 的完整架构、Guardrails、Behavior Evaluation 与限制见 [`docs/v3-agent.md`](docs/v3-agent.md)。
@@ -60,7 +60,7 @@ V1 Fixed RAG 与 V3 Agent 是两个独立入口：前者固定执行 Retrieval �
 ## 高层架构设想
 
 - `nexusmind-server`：Java 后端服务
-- `nexusmind-web`：Vue 3 单页 V3 Demo（Fixed RAG、Retrieval Lab、Agent Chat）
+- `nexusmind-web`：Vue 3 单页 Tabbed Workbench（Knowledge、Agent Chat、RAG Chat、Retrieval Lab）
 - `deploy`：MySQL 与 Milvus 本地开发环境
 - `docs`：架构、设计决策与评估文档
 

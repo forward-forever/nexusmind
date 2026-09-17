@@ -44,12 +44,14 @@ describe('Agent tool and source presentation', () => {
     expect(wrapper.text()).toContain('MVCC Read View')
     expect(wrapper.text()).toContain('1 results · 492 ms')
     expect(wrapper.text()).toContain('S1 · Page 17')
-    expect(wrapper.text()).toContain('1 tools · 2 model turns · 1300 ms')
+    expect(wrapper.text()).toContain('Agent Trace · 1 tools · 2 turns · 1300 ms')
     expect(wrapper.text()).not.toContain('knowledgeBaseId')
   })
 
   it('renders final source metadata as text', () => {
-    const wrapper = mount(AgentSourceCard, { props: { source, highlighted: false } })
+    const wrapper = mount(AgentSourceCard, {
+      props: { runId: 'run-1', source, highlighted: false },
+    })
     expect(wrapper.text()).toContain('S1')
     expect(wrapper.text()).toContain('mysql.pdf')
     expect(wrapper.text()).toContain('Page 17')

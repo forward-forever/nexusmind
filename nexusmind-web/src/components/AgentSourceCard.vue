@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import type { AgentSource } from '@/types/agent'
+import { agentSourceDomId } from '@/utils/agentSource'
 
-defineProps<{ source: AgentSource; highlighted: boolean }>()
+defineProps<{ runId: string; source: AgentSource; highlighted: boolean }>()
 </script>
 
 <template>
   <article
-    :id="`agent-source-${source.sourceId}`"
+    :id="agentSourceDomId(runId, source.sourceId)"
     class="agent-source-card"
     :class="{ highlighted }"
   >

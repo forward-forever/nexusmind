@@ -16,14 +16,24 @@ function safeArgument(tool: AgentToolTrace): string | null {
 function shortId(value: string | null): string {
   return value ? `${value.slice(0, 8)}…` : 'pending'
 }
+
+function traceSummary(run: AgentRunView): string {
+  const tools = run.toolCallCount ?? run.tools.length
+  const turns = run.modelTurnCount === null ? '…' : run.modelTurnCount
+  const duration = run.durationMs === null ? 'running' : `${run.durationMs} ms`
+  return `Agent Trace · ${tools} tools · ${turns} turns · ${duration}`
+}
 </script>
 
 <template>
-  <section class="agent-trace" aria-label="Agent tool trace">
-    <div class="agent-trace-heading">
-      <strong>Agent Trace</strong>
+  <details
+    class="agent-trace"
+    :open="run.status === 'streaming' || run.status === 'error'"
+  >
+    <summary class="agent-trace-heading">
+      <strong>{{ traceSummary(run) }}</strong>
       <span>Session {{ shortId(run.sessionId) }} · Run {{ shortId(run.runId) }}</span>
-    </div>
+    </summary>
 
     <div v-if="run.tools.length" class="agent-tool-list">
       <article
@@ -57,5 +67,5 @@ function shortId(value: string | null): string {
       {{ run.toolCallCount }} tools · {{ run.modelTurnCount }} model turns · {{ run.durationMs }} ms
     </footer>
     <p v-if="run.error" class="inline-error">{{ run.error }}</p>
-  </section>
+  </details>
 </template>

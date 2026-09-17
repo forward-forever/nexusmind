@@ -18,6 +18,7 @@ out/
 
 # macOS
 .DS_Store
+__MACOSX/
 .AppleDouble
 .LSOverride
 
@@ -55,3 +56,5 @@ evaluation/reports/*
 !evaluation/reports/.gitkeep
 evaluation/agent/reports/*
 !evaluation/agent/reports/.gitkeep
+evaluation/**/reports/*.json
+evaluation/**/reports/*.md

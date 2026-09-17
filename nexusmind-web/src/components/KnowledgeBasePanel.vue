@@ -69,7 +69,7 @@ function submit(): void {
 
     <p v-if="loading" class="muted-state">Loading knowledge bases…</p>
     <p v-else-if="knowledgeBases.length === 0" class="muted-state">
-      暂无知识库。创建一个开始 V1 Demo。
+      Create your first Knowledge Base to begin.
     </p>
     <nav v-else class="knowledge-list" aria-label="Knowledge bases">
       <button

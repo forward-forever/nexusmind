@@ -17,12 +17,15 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
+    "dompurify": "^3.4.15",
     "eventsource-parser": "4.1.0",
+    "markdown-it": "^15.0.2",
     "vue": "^3.5.40"
   },
   "devDependencies": {
     "@tsconfig/node24": "^24.0.4",
     "@types/jsdom": "^28.0.3",
+    "@types/markdown-it": "^14.2.0",
     "@types/node": "^24.13.3",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vitest/eslint-plugin": "^1.6.23",
