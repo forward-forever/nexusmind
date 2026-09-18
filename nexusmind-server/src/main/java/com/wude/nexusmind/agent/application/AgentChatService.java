@@ -16,6 +16,8 @@ import com.wude.nexusmind.knowledge.service.KnowledgeBaseService;
 import com.wude.nexusmind.model.config.RagChatProperties;
 import com.wude.nexusmind.rag.exception.KnowledgeBaseInactiveException;
 import com.wude.nexusmind.resilience.ProviderStreamingRetry;
+import com.wude.nexusmind.context.ContextBudgetExceededException;
+import com.wude.nexusmind.context.TokenBudgetCalculator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClientMessageAggregator;
@@ -62,6 +64,7 @@ public class AgentChatService {
     private final RagChatProperties chatProperties;
     private final Clock clock;
     private final ProviderStreamingRetry streamingRetry;
+    private final TokenBudgetCalculator tokenBudgetCalculator;
 
     public AgentChatService(KnowledgeBaseService knowledgeBaseService,
                             AgentModelTurnStreamer modelTurnStreamer,
@@ -73,7 +76,8 @@ public class AgentChatService {
                             AgentProperties properties,
                             RagChatProperties chatProperties,
                             Clock clock,
-                            ProviderStreamingRetry streamingRetry) {
+                            ProviderStreamingRetry streamingRetry,
+                            TokenBudgetCalculator tokenBudgetCalculator) {
         this.knowledgeBaseService = knowledgeBaseService;
         this.modelTurnStreamer = modelTurnStreamer;
         this.toolCallingManager = toolCallingManager;
@@ -85,6 +89,7 @@ public class AgentChatService {
         this.chatProperties = chatProperties;
         this.clock = clock;
         this.streamingRetry = streamingRetry;
+        this.tokenBudgetCalculator = tokenBudgetCalculator;
     }
 
     public Flux<AgentStreamEvent> chat(long knowledgeBaseId, String message) {
@@ -111,8 +116,16 @@ public class AgentChatService {
             }
             List<Message> history;
             try {
+                int memoryBudget = tokenBudgetCalculator.agentMemoryBudget(
+                        promptFactory.create(List.of(), normalizedMessage),
+                        properties.memory().maxTokens());
                 history = memoryService.loadRecentMessages(
-                        sessionId, properties.memory().maxMessages());
+                        sessionId, properties.memory().maxMessages(), memoryBudget);
+            } catch (ContextBudgetExceededException exceeded) {
+                sessionConcurrencyService.release(sessionId, runId);
+                AgentExecutionException failure = AgentExecutionException.contextBudget(exceeded);
+                return Flux.just(AgentStreamEvent.error(
+                        runId, sessionId, failure.code(), failure.clientMessage()));
             } catch (RuntimeException failure) {
                 sessionConcurrencyService.release(sessionId, runId);
                 throw failure;
@@ -122,15 +135,19 @@ public class AgentChatService {
             AgentToolEventPublisher publisher = event -> emit(eventSink, emissionLock, event);
             AgentRunContext runContext = new AgentRunContext(
                     runId, sessionId, knowledgeBaseId, history.size(),
-                    properties.maxDuration(), clock, publisher);
-            ToolCallingChatOptions options = ToolCallingChatOptions.builder()
+                    properties.maxDuration(), clock, publisher,
+                    properties.toolResult().maxTokensPerRun());
+            ToolCallingChatOptions.Builder optionsBuilder = ToolCallingChatOptions.builder()
                     .model(chatProperties.model())
                     .temperature(chatProperties.temperature())
                     .toolCallbacks(toolSet.callbacks())
                     .toolContext(Map.of(
                             KnowledgeSearchTool.CONTEXT_KNOWLEDGE_BASE_ID, knowledgeBaseId,
-                            KnowledgeSearchTool.CONTEXT_AGENT_RUN, runContext))
-                    .build();
+                            KnowledgeSearchTool.CONTEXT_AGENT_RUN, runContext));
+            if (tokenBudgetCalculator.properties().reservedOutputTokens() > 0) {
+                optionsBuilder.maxTokens(tokenBudgetCalculator.properties().reservedOutputTokens());
+            }
+            ToolCallingChatOptions options = optionsBuilder.build();
             Prompt prompt = new Prompt(promptFactory.create(history, normalizedMessage), options);
 
             Mono<Void> execution = runLoop(runContext, prompt, normalizedMessage)
@@ -155,6 +172,11 @@ public class AgentChatService {
                                String currentUserMessage) {
         return Mono.defer(() -> {
             runContext.ensureTimeRemaining();
+            try {
+                tokenBudgetCalculator.validateAgentMessages(prompt.getInstructions());
+            } catch (ContextBudgetExceededException exceeded) {
+                throw AgentExecutionException.contextBudget(exceeded);
+            }
             int turn = runContext.incrementModelTurn();
             long turnStarted = System.nanoTime();
             return streamModelTurn(runContext, prompt)
@@ -326,6 +348,9 @@ public class AgentChatService {
         if (hasCause(error, AgentSessionLeaseLostException.class)) {
             return AgentExecutionException.leaseLost(error);
         }
+        if (hasCause(error, ContextBudgetExceededException.class)) {
+            return AgentExecutionException.contextBudget(error);
+        }
         return AgentExecutionException.model(error);
     }
 
@@ -336,6 +361,9 @@ public class AgentChatService {
         }
         if (error instanceof TimeoutException) {
             return AgentExecutionException.timeout();
+        }
+        if (hasCause(error, ContextBudgetExceededException.class)) {
+            return AgentExecutionException.contextBudget(error);
         }
         if (error instanceof ToolExecutionException || hasCause(error, ToolExecutionException.class)) {
             return AgentExecutionException.tool(error);

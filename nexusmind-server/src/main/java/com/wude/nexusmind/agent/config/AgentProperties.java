@@ -19,7 +19,8 @@ public record AgentProperties(
         @Valid @NotNull KnowledgeSearch knowledgeSearch,
         @Valid @NotNull DocumentContext documentContext,
         @Valid @NotNull Memory memory,
-        @Valid @NotNull SessionConcurrency sessionConcurrency) {
+        @Valid @NotNull SessionConcurrency sessionConcurrency,
+        @Valid @NotNull ToolResult toolResult) {
 
     public AgentProperties(boolean enabled,
                            int maxToolCalls,
@@ -28,7 +29,18 @@ public record AgentProperties(
                            DocumentContext documentContext,
                            Memory memory) {
         this(enabled, maxToolCalls, maxDuration, knowledgeSearch, documentContext, memory,
-                new SessionConcurrency(Duration.ofSeconds(45)));
+                new SessionConcurrency(Duration.ofSeconds(45)), new ToolResult(5_000, 12_000));
+    }
+
+    public AgentProperties(boolean enabled,
+                           int maxToolCalls,
+                           Duration maxDuration,
+                           KnowledgeSearch knowledgeSearch,
+                           DocumentContext documentContext,
+                           Memory memory,
+                           SessionConcurrency sessionConcurrency) {
+        this(enabled, maxToolCalls, maxDuration, knowledgeSearch, documentContext, memory,
+                sessionConcurrency, new ToolResult(5_000, 12_000));
     }
 
     @ConstructorBinding
@@ -52,13 +64,30 @@ public record AgentProperties(
             @Min(0) int afterChunks) {
     }
 
-    public record Memory(@Min(1) int maxMessages) {
+    public record Memory(@Min(1) int maxMessages, @Min(1) int maxTokens) {
+        public Memory(int maxMessages) {
+            this(maxMessages, 6_000);
+        }
+
+        @ConstructorBinding
+        public Memory {
+        }
     }
 
     public record SessionConcurrency(@NotNull Duration leaseDuration) {
         public SessionConcurrency {
             if (leaseDuration == null || leaseDuration.isZero() || leaseDuration.isNegative()) {
                 throw new IllegalArgumentException("Agent session lease duration must be positive");
+            }
+        }
+    }
+
+    public record ToolResult(@Min(1) int maxTokensPerCall,
+                             @Min(1) int maxTokensPerRun) {
+        public ToolResult {
+            if (maxTokensPerCall <= 0 || maxTokensPerRun < maxTokensPerCall) {
+                throw new IllegalArgumentException(
+                        "Tool-result run budget must be at least the positive per-call budget");
             }
         }
     }

@@ -3,6 +3,11 @@ package com.wude.nexusmind.rag.chat;
 import com.wude.nexusmind.rag.context.RagContext;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+
+import java.util.List;
 
 @Component
 @ConditionalOnProperty(name = "nexusmind.rag.enabled", havingValue = "true")
@@ -34,5 +39,25 @@ public class RagPromptFactory {
                 + "USER QUESTION:\n\n"
                 + question.trim();
         return new RagPrompt(SYSTEM_MESSAGE, userMessage);
+    }
+
+    public List<Message> fixedMessages(String question) {
+        String normalized = requireQuestion(question);
+        return List.of(
+                new SystemMessage(SYSTEM_MESSAGE),
+                new UserMessage("REFERENCE CONTEXT:\n\nUSER QUESTION:\n\n" + normalized));
+    }
+
+    public List<Message> messages(RagPrompt prompt) {
+        return List.of(
+                new SystemMessage(prompt.systemMessage()),
+                new UserMessage(prompt.userMessage()));
+    }
+
+    private static String requireQuestion(String question) {
+        if (question == null || question.isBlank()) {
+            throw new IllegalArgumentException("RAG question is required");
+        }
+        return question.trim();
     }
 }

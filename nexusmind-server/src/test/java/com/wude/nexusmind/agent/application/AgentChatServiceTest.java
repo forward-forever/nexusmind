@@ -26,6 +26,9 @@ import com.wude.nexusmind.rag.retrieval.RetrievalScoreType;
 import com.wude.nexusmind.rag.retrieval.RetrievalService;
 import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
 import com.wude.nexusmind.rag.retrieval.RetrieverType;
+import com.wude.nexusmind.support.TestTokenSupport;
+import com.wude.nexusmind.context.TokenBudgetCalculator;
+import com.wude.nexusmind.context.TokenBudgetProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -294,7 +297,7 @@ class AgentChatServiceTest {
                 Flux.just(text("第二种隔离级别是 RR。[S1]")));
         fixture.stubVisibleContext();
         when(fixture.memory.resolveSession(33L, sessionId)).thenReturn(sessionId);
-        when(fixture.memory.loadRecentMessages(sessionId, 12)).thenReturn(List.of(
+        when(fixture.memory.loadRecentMessages(sessionId, 12, 6000)).thenReturn(List.of(
                 new UserMessage("请解释 RC 和 RR。"),
                 new AssistantMessage("第一种是 RC，第二种是 RR。")));
 
@@ -321,6 +324,36 @@ class AgentChatServiceTest {
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.eq("你刚才说的第二种是什么？"),
                 org.mockito.ArgumentMatchers.eq("第二种隔离级别是 RR。[S1]"));
+    }
+
+    @Test
+    void finalPromptValidationRejectsAccumulatedToolProtocolBeforeAnotherModelCallAndReleasesLease() {
+        AgentPromptFactory promptFactory = new AgentPromptFactory();
+        int fixedTokens = TestTokenSupport.estimator().estimateMessages(
+                promptFactory.create(List.of(), "search"));
+        TokenBudgetCalculator tightBudget = TestTokenSupport.calculator(
+                new TokenBudgetProperties(fixedTokens + 55, 1, 1, 3));
+        Fixture fixture = fixture(
+                5, Clock.systemUTC(), false,
+                com.wude.nexusmind.resilience.ProviderStreamingRetry.noRetry(), tightBudget,
+                Flux.just(toolCalls(call("call-1", "MVCC"))));
+
+        List<AgentStreamEvent> events = fixture.service.chat(33L, null, "search")
+                .collectList().block(Duration.ofSeconds(2));
+
+        assertThat(events).extracting(AgentStreamEvent::type)
+                .containsExactly("tool_start", "tool_result", "error");
+        assertThat(events.get(events.size() - 1).code())
+                .isEqualTo("AGENT_CONTEXT_BUDGET_EXCEEDED");
+        assertThat(fixture.streamer.prompts).hasSize(1);
+        verify(fixture.memory, never()).appendSuccessfulTurn(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString());
+        verify(fixture.concurrency).release(
+                org.mockito.ArgumentMatchers.eq("11111111-1111-1111-1111-111111111111"),
+                org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test
@@ -470,6 +503,17 @@ class AgentChatServiceTest {
                                    boolean retrievalFails,
                                    com.wude.nexusmind.resilience.ProviderStreamingRetry streamingRetry,
                                    Flux<ChatClientResponse>... turns) {
+        return fixture(maxToolCalls, clock, retrievalFails, streamingRetry,
+                TestTokenSupport.calculator(), turns);
+    }
+
+    @SafeVarargs
+    private static Fixture fixture(int maxToolCalls,
+                                   Clock clock,
+                                   boolean retrievalFails,
+                                   com.wude.nexusmind.resilience.ProviderStreamingRetry streamingRetry,
+                                   TokenBudgetCalculator tokenBudgetCalculator,
+                                   Flux<ChatClientResponse>... turns) {
         RetrievalService retrieval = mock(RetrievalService.class);
         when(retrieval.type()).thenReturn(RetrieverType.DENSE);
         if (retrievalFails) {
@@ -490,11 +534,12 @@ class AgentChatServiceTest {
                 new AgentProperties.KnowledgeSearch(RetrieverType.DENSE, 5),
                 new AgentProperties.DocumentContext(1, 1),
                 new AgentProperties.Memory(12));
-        KnowledgeSearchTool tool = new KnowledgeSearchTool(registry, properties);
+        AgentToolResultBudgeter toolBudgeter = TestTokenSupport.toolBudgeter(properties);
+        KnowledgeSearchTool tool = new KnowledgeSearchTool(registry, properties, toolBudgeter);
         KnowledgeChunkMapper chunks = mock(KnowledgeChunkMapper.class);
         KnowledgeDocumentMapper documents = mock(KnowledgeDocumentMapper.class);
         DocumentContextTool contextTool = new DocumentContextTool(
-                new DocumentContextService(chunks, documents), properties);
+                new DocumentContextService(chunks, documents, toolBudgeter), properties);
         QueueModelTurnStreamer streamer = new QueueModelTurnStreamer(List.of(turns));
         KnowledgeBaseService knowledgeBaseService = mock(KnowledgeBaseService.class);
         KnowledgeBase knowledgeBase = new KnowledgeBase();
@@ -511,7 +556,7 @@ class AgentChatServiceTest {
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any())).thenAnswer(invocation ->
                 memory.resolveSession(33L, invocation.getArgument(1)));
-        when(memory.loadRecentMessages("11111111-1111-1111-1111-111111111111", 12))
+        when(memory.loadRecentMessages("11111111-1111-1111-1111-111111111111", 12, 6000))
                 .thenReturn(List.of());
         AgentChatService service = new AgentChatService(
                 knowledgeBaseService,
@@ -525,7 +570,8 @@ class AgentChatServiceTest {
                 new RagChatProperties("qwen3.5-flash", 0.2, 5, 10, 12_000,
                         Duration.ofSeconds(120), Duration.ofSeconds(150)),
                 clock,
-                streamingRetry);
+                streamingRetry,
+                tokenBudgetCalculator);
         return new Fixture(service, retrieval, streamer, chunks, documents, memory, concurrency);
     }
 

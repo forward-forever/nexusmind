@@ -1,6 +1,8 @@
 package com.wude.nexusmind.rag.context;
 
-import com.wude.nexusmind.model.config.RagChatProperties;
+import com.wude.nexusmind.context.ContextBudgetExceededException;
+import com.wude.nexusmind.context.NexusTokenEstimator;
+import com.wude.nexusmind.context.TokenTextTruncator;
 import com.wude.nexusmind.rag.retrieval.RetrievalHit;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -13,19 +15,33 @@ import java.util.Locale;
 @ConditionalOnProperty(name = "nexusmind.rag.enabled", havingValue = "true")
 public class RagContextBuilder {
 
-    private final RagChatProperties properties;
+    private final RagContextProperties properties;
+    private final NexusTokenEstimator estimator;
+    private final TokenTextTruncator truncator;
 
-    public RagContextBuilder(RagChatProperties properties) {
+    public RagContextBuilder(RagContextProperties properties,
+                             NexusTokenEstimator estimator,
+                             TokenTextTruncator truncator) {
         this.properties = properties;
+        this.estimator = estimator;
+        this.truncator = truncator;
     }
 
     public RagContext build(List<RetrievalHit> rankedHits) {
+        return build(rankedHits, properties.maxTokens());
+    }
+
+    public RagContext build(List<RetrievalHit> rankedHits, int contextBudgetTokens) {
+        if (contextBudgetTokens <= 0) {
+            throw new IllegalArgumentException("RAG context budget must be positive");
+        }
         if (rankedHits == null || rankedHits.isEmpty()) {
-            return new RagContext("", List.of(), 0);
+            return new RagContext("", List.of(), 0, 0, false);
         }
 
         StringBuilder context = new StringBuilder();
         List<RagSource> includedSources = new ArrayList<>();
+        boolean truncated = false;
         for (RetrievalHit hit : rankedHits) {
             String sourceId = "S" + (includedSources.size() + 1);
             RagSource source = new RagSource(
@@ -39,16 +55,32 @@ public class RagContextBuilder {
                     hit.scoreType(),
                     hit.content());
             String block = format(source);
-            if (context.length() + block.length() > properties.maxContextChars()) {
+            String prospective = context + block;
+            if (estimator.estimate(prospective) > contextBudgetTokens) {
+                truncated = true;
+                if (includedSources.isEmpty()) {
+                    TokenTextTruncator.TruncatedText shortened = truncator
+                            .truncateToFitRendered(
+                                    source.content(), contextBudgetTokens,
+                                    content -> format(withContent(source, content)))
+                            .orElseThrow(() -> new ContextBudgetExceededException(
+                                    "RAG context budget cannot fit source metadata"));
+                    RagSource truncatedSource = withContent(source, shortened.text());
+                    String truncatedBlock = format(truncatedSource);
+                    context.append(truncatedBlock);
+                    includedSources.add(truncatedSource);
+                }
                 break;
             }
             context.append(block);
             includedSources.add(source);
         }
-        return new RagContext(context.toString(), includedSources, context.length());
+        String text = context.toString();
+        return new RagContext(
+                text, includedSources, text.length(), estimator.estimate(text), truncated);
     }
 
-    private static String format(RagSource source) {
+    static String format(RagSource source) {
         StringBuilder block = new StringBuilder()
                 .append("===== SOURCE ").append(source.sourceId()).append(" =====\n")
                 .append("file: ").append(singleLine(source.fileName())).append('\n');
@@ -64,6 +96,12 @@ public class RagContextBuilder {
                 .append(source.content()).append('\n')
                 .append("===== END SOURCE ").append(source.sourceId()).append(" =====\n\n");
         return block.toString();
+    }
+
+    private static RagSource withContent(RagSource source, String content) {
+        return new RagSource(
+                source.sourceId(), source.chunkId(), source.documentId(), source.fileName(),
+                source.pageNo(), source.sectionTitle(), source.score(), source.scoreType(), content);
     }
 
     private static String singleLine(String value) {

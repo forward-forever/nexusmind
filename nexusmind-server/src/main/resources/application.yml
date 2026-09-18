@@ -64,8 +64,12 @@ nexusmind:
       after-chunks: 1
     memory:
       max-messages: 12
+      max-tokens: 6000
     session-concurrency:
       lease-duration: 45s
+    tool-result:
+      max-tokens-per-call: 5000
+      max-tokens-per-run: 12000
   agent-evaluation:
     enabled: false
   dataset-resolver:
@@ -77,6 +81,11 @@ nexusmind:
   vector:
     enabled: false
   ai:
+    context:
+      max-context-tokens: 32768
+      reserved-output-tokens: 4096
+      safety-margin-tokens: 4096
+      tool-definition-reserve-tokens: 2048
     resilience:
       max-retries: 2
       initial-delay: 200ms
@@ -106,6 +115,8 @@ nexusmind:
   rag:
     enabled: false
     retriever: DENSE
+    context:
+      max-tokens: 12000
     hybrid:
       rrf:
         k: 60

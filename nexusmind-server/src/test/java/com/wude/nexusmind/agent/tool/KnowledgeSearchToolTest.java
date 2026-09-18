@@ -13,6 +13,7 @@ import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
 import com.wude.nexusmind.rag.retrieval.RetrieverType;
 import com.wude.nexusmind.knowledge.mapper.KnowledgeChunkMapper;
 import com.wude.nexusmind.knowledge.mapper.KnowledgeDocumentMapper;
+import com.wude.nexusmind.support.TestTokenSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.model.ToolContext;
 
@@ -127,7 +128,8 @@ class KnowledgeSearchToolTest {
                 new AgentProperties.DocumentContext(1, 1),
                 new AgentProperties.Memory(12));
         KnowledgeSearchTool tool = new KnowledgeSearchTool(
-                new RetrievalServiceRegistry(List.of(retrieval)), properties);
+                new RetrievalServiceRegistry(List.of(retrieval)), properties,
+                TestTokenSupport.toolBudgeter(properties));
         List<AgentStreamEvent> events = new ArrayList<>();
         AgentRunContext runContext = new AgentRunContext(
                 33L, Duration.ofSeconds(30),
@@ -138,7 +140,8 @@ class KnowledgeSearchToolTest {
                 KnowledgeSearchTool.CONTEXT_AGENT_RUN, runContext));
         DocumentContextTool contextTool = new DocumentContextTool(
                 new DocumentContextService(
-                        mock(KnowledgeChunkMapper.class), mock(KnowledgeDocumentMapper.class)),
+                        mock(KnowledgeChunkMapper.class), mock(KnowledgeDocumentMapper.class),
+                        TestTokenSupport.toolBudgeter(properties)),
                 properties);
         return new Fixture(tool, new AgentToolSet(tool, contextTool), retrieval,
                 runContext, context, events);

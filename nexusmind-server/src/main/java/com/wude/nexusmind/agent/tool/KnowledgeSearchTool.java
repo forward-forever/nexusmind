@@ -1,12 +1,12 @@
 package com.wude.nexusmind.agent.tool;
 
 import com.wude.nexusmind.agent.application.AgentRunContext;
+import com.wude.nexusmind.agent.application.AgentToolResultBudgeter;
 import com.wude.nexusmind.agent.config.AgentProperties;
 import com.wude.nexusmind.agent.model.AgentSource;
-import com.wude.nexusmind.agent.model.KnowledgeSearchItem;
 import com.wude.nexusmind.agent.model.KnowledgeSearchToolResult;
 import com.wude.nexusmind.agent.stream.AgentStreamEvent;
-import com.wude.nexusmind.rag.retrieval.RetrievalHit;
+import com.wude.nexusmind.context.ContextBudgetExceededException;
 import com.wude.nexusmind.rag.retrieval.RetrievalResult;
 import com.wude.nexusmind.rag.retrieval.RetrievalService;
 import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
@@ -31,11 +31,14 @@ public final class KnowledgeSearchTool {
 
     private final RetrievalServiceRegistry retrievalServiceRegistry;
     private final AgentProperties properties;
+    private final AgentToolResultBudgeter resultBudgeter;
 
     public KnowledgeSearchTool(RetrievalServiceRegistry retrievalServiceRegistry,
-                               AgentProperties properties) {
+                               AgentProperties properties,
+                               AgentToolResultBudgeter resultBudgeter) {
         this.retrievalServiceRegistry = retrievalServiceRegistry;
         this.properties = properties;
+        this.resultBudgeter = resultBudgeter;
     }
 
     @Tool(
@@ -45,8 +48,9 @@ public final class KnowledgeSearchTool {
                     + "in the knowledge base or when the user explicitly asks for information from the "
                     + "knowledge base. Search first when knowledge-base information is needed. Results "
                     + "contain source IDs that can later be passed to get_document_context when surrounding "
-                    + "context is needed. Do not use it for casual conversation or questions that can be "
-                    + "answered without the knowledge base.")
+                    + "context is needed. Results may be truncated to the application context budget; "
+                    + "repeating the same query normally will not reveal omitted content. Do not use it "
+                    + "for casual conversation or questions that can be answered without the knowledge base.")
     public KnowledgeSearchToolResult search(
             @ToolParam(description = "A concise search query describing the needed knowledge") String query,
             ToolContext toolContext) {
@@ -69,10 +73,9 @@ public final class KnowledgeSearchTool {
                     properties.knowledgeSearch().retriever());
             RetrievalResult result = retrievalService.retrieve(
                     knowledgeBaseId, normalizedQuery, properties.knowledgeSearch().topK());
-            List<KnowledgeSearchItem> items = result.hits().stream()
-                    .map(hit -> mapItem(runContext, hit))
-                    .toList();
-            List<AgentSource> sources = items.stream()
+            KnowledgeSearchToolResult toolResult = resultBudgeter.budgetSearch(
+                    runContext, normalizedQuery, result.hits());
+            List<AgentSource> sources = toolResult.items().stream()
                     .map(item -> new AgentSource(
                             item.sourceId(), item.chunkId(), item.documentId(), item.fileName(),
                             item.pageNo(), item.sectionTitle()))
@@ -80,12 +83,14 @@ public final class KnowledgeSearchTool {
             long durationMs = elapsedMillis(startedAt);
             runContext.publish(AgentStreamEvent.toolResult(
                     runContext.runId(), runContext.sessionId(), invocationId, TOOL_NAME,
-                    durationMs, items.size(), sources));
+                    durationMs, toolResult.items().size(), sources));
             log.info("Agent tool completed: runId={}, toolName={}, knowledgeBaseId={}, retrieverType={}, "
                             + "resultCount={}, durationMs={}",
                     runContext.runId(), TOOL_NAME, knowledgeBaseId,
-                    properties.knowledgeSearch().retriever(), items.size(), durationMs);
-            return new KnowledgeSearchToolResult(!items.isEmpty(), normalizedQuery, items);
+                    properties.knowledgeSearch().retriever(), toolResult.items().size(), durationMs);
+            return toolResult;
+        } catch (ContextBudgetExceededException budgetExceeded) {
+            throw budgetExceeded;
         } catch (RuntimeException error) {
             runContext.publish(AgentStreamEvent.toolError(
                     runContext.runId(), runContext.sessionId(), invocationId, TOOL_NAME,
@@ -97,18 +102,6 @@ public final class KnowledgeSearchTool {
                     error.getClass().getSimpleName(), error);
             throw error;
         }
-    }
-
-    private static KnowledgeSearchItem mapItem(AgentRunContext runContext, RetrievalHit hit) {
-        AgentSource source = runContext.sourceRegistry().register(hit);
-        return new KnowledgeSearchItem(
-                source.sourceId(),
-                hit.chunkId(),
-                hit.documentId(),
-                hit.fileName(),
-                hit.pageNo(),
-                hit.sectionTitle(),
-                hit.content());
     }
 
     private static AgentRunContext requireRunContext(ToolContext toolContext) {

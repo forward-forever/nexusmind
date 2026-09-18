@@ -1,6 +1,8 @@
 package com.wude.nexusmind.agent.config;
 
+import tools.jackson.databind.ObjectMapper;
 import com.wude.nexusmind.agent.application.AgentModelTurnStreamer;
+import com.wude.nexusmind.agent.application.AgentToolResultBudgeter;
 import com.wude.nexusmind.agent.application.DocumentContextService;
 import com.wude.nexusmind.agent.application.SpringAiAgentModelTurnStreamer;
 import com.wude.nexusmind.agent.prompt.AgentPromptFactory;
@@ -11,6 +13,8 @@ import com.wude.nexusmind.agent.tool.KnowledgeSearchTool;
 import com.wude.nexusmind.knowledge.mapper.KnowledgeChunkMapper;
 import com.wude.nexusmind.knowledge.mapper.KnowledgeDocumentMapper;
 import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
+import com.wude.nexusmind.context.NexusTokenEstimator;
+import com.wude.nexusmind.context.TokenTextTruncator;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.tool.execution.DefaultToolExecutionExceptionProcessor;
@@ -29,15 +33,26 @@ public class AgentConfiguration {
     @Bean
     @ConditionalOnProperty(name = "nexusmind.agent.enabled", havingValue = "true")
     KnowledgeSearchTool knowledgeSearchTool(RetrievalServiceRegistry retrievalServiceRegistry,
-                                            AgentProperties properties) {
-        return new KnowledgeSearchTool(retrievalServiceRegistry, properties);
+                                            AgentProperties properties,
+                                            AgentToolResultBudgeter resultBudgeter) {
+        return new KnowledgeSearchTool(retrievalServiceRegistry, properties, resultBudgeter);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "nexusmind.agent.enabled", havingValue = "true")
+    AgentToolResultBudgeter agentToolResultBudgeter(ObjectMapper objectMapper,
+                                                    NexusTokenEstimator estimator,
+                                                    TokenTextTruncator truncator,
+                                                    AgentProperties properties) {
+        return new AgentToolResultBudgeter(objectMapper, estimator, truncator, properties);
     }
 
     @Bean
     @ConditionalOnProperty(name = "nexusmind.agent.enabled", havingValue = "true")
     DocumentContextService documentContextService(KnowledgeChunkMapper chunkMapper,
-                                                   KnowledgeDocumentMapper documentMapper) {
-        return new DocumentContextService(chunkMapper, documentMapper);
+                                                   KnowledgeDocumentMapper documentMapper,
+                                                   AgentToolResultBudgeter resultBudgeter) {
+        return new DocumentContextService(chunkMapper, documentMapper, resultBudgeter);
     }
 
     @Bean

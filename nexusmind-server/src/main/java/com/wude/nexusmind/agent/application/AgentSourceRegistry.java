@@ -35,6 +35,11 @@ public final class AgentSourceRegistry {
         return created;
     }
 
+    public synchronized String previewSourceId(long chunkId) {
+        AgentSource existing = sourcesByChunkId.get(chunkId);
+        return existing == null ? "S" + (sequence.get() + 1) : existing.sourceId();
+    }
+
     public Optional<Long> resolveChunkId(String sourceId) {
         if (sourceId == null) {
             return Optional.empty();

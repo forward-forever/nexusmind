@@ -6,10 +6,23 @@ public record DocumentContextToolResult(
         boolean found,
         String requestedSourceId,
         String reason,
-        List<DocumentContextItem> items) {
+        List<DocumentContextItem> items,
+        boolean truncated,
+        int omittedItemCount,
+        int estimatedTokens) {
+
+    public DocumentContextToolResult(boolean found,
+                                     String requestedSourceId,
+                                     String reason,
+                                     List<DocumentContextItem> items) {
+        this(found, requestedSourceId, reason, items, false, 0, 0);
+    }
 
     public DocumentContextToolResult {
         items = items == null ? List.of() : List.copyOf(items);
+        if (omittedItemCount < 0 || estimatedTokens < 0) {
+            throw new IllegalArgumentException("Tool-result metadata must not be negative");
+        }
     }
 
     public static DocumentContextToolResult unknownSource(String sourceId) {

@@ -22,13 +22,14 @@ public final class AgentRunContext {
     private final AtomicInteger modelTurnCount = new AtomicInteger();
     private final AgentSourceRegistry sourceRegistry = new AgentSourceRegistry();
     private final AgentToolEventPublisher eventPublisher;
+    private final AgentRunTokenBudget tokenBudget;
 
     public AgentRunContext(long knowledgeBaseId,
                            Duration maxDuration,
                            Clock clock,
                            AgentToolEventPublisher eventPublisher) {
         this(UUID.randomUUID().toString(), UUID.randomUUID().toString(), knowledgeBaseId,
-                0, maxDuration, clock, eventPublisher);
+                0, maxDuration, clock, eventPublisher, 12_000);
     }
 
     public AgentRunContext(String sessionId,
@@ -37,7 +38,7 @@ public final class AgentRunContext {
                            Clock clock,
                            AgentToolEventPublisher eventPublisher) {
         this(UUID.randomUUID().toString(), sessionId, knowledgeBaseId,
-                0, maxDuration, clock, eventPublisher);
+                0, maxDuration, clock, eventPublisher, 12_000);
     }
 
     public AgentRunContext(String sessionId,
@@ -47,7 +48,7 @@ public final class AgentRunContext {
                            Clock clock,
                            AgentToolEventPublisher eventPublisher) {
         this(UUID.randomUUID().toString(), sessionId, knowledgeBaseId,
-                historyMessageCount, maxDuration, clock, eventPublisher);
+                historyMessageCount, maxDuration, clock, eventPublisher, 12_000);
     }
 
     AgentRunContext(String runId,
@@ -56,7 +57,8 @@ public final class AgentRunContext {
                     int historyMessageCount,
                     Duration maxDuration,
                     Clock clock,
-                    AgentToolEventPublisher eventPublisher) {
+                    AgentToolEventPublisher eventPublisher,
+                    int toolResultMaxTokensPerRun) {
         this.runId = runId;
         this.sessionId = sessionId;
         this.knowledgeBaseId = knowledgeBaseId;
@@ -65,6 +67,7 @@ public final class AgentRunContext {
         this.eventPublisher = eventPublisher;
         this.startedAt = clock.instant();
         this.deadline = startedAt.plus(maxDuration);
+        this.tokenBudget = new AgentRunTokenBudget(toolResultMaxTokensPerRun);
     }
 
     /**
@@ -131,6 +134,10 @@ public final class AgentRunContext {
 
     public AgentSourceRegistry sourceRegistry() {
         return sourceRegistry;
+    }
+
+    public AgentRunTokenBudget tokenBudget() {
+        return tokenBudget;
     }
 
     public void publish(AgentStreamEvent event) {

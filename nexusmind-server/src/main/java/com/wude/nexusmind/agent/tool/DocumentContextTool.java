@@ -6,6 +6,7 @@ import com.wude.nexusmind.agent.config.AgentProperties;
 import com.wude.nexusmind.agent.model.AgentSource;
 import com.wude.nexusmind.agent.model.DocumentContextToolResult;
 import com.wude.nexusmind.agent.stream.AgentStreamEvent;
+import com.wude.nexusmind.context.ContextBudgetExceededException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.model.ToolContext;
@@ -37,7 +38,9 @@ public final class DocumentContextTool {
             description = "Load nearby passages around a source that was returned earlier during this "
                     + "agent run. Use this when a search result is relevant but additional surrounding "
                     + "context is needed to answer accurately. The sourceId must come from a previous "
-                    + "tool result. Do not invent source IDs.")
+                    + "tool result. Results may be truncated to the application context budget, and "
+                    + "repeating the same request normally will not reveal omitted content. Do not invent "
+                    + "source IDs.")
     public DocumentContextToolResult getContext(
             @ToolParam(description = "A source ID returned by an earlier tool result, for example S1")
             String sourceId,
@@ -74,6 +77,8 @@ public final class DocumentContextTool {
                     runContext.runId(), TOOL_NAME, knowledgeBaseId, result.found(),
                     result.items().size(), durationMs);
             return result;
+        } catch (ContextBudgetExceededException budgetExceeded) {
+            throw budgetExceeded;
         } catch (RuntimeException error) {
             runContext.publish(AgentStreamEvent.toolError(
                     runContext.runId(), runContext.sessionId(), invocationId, TOOL_NAME,

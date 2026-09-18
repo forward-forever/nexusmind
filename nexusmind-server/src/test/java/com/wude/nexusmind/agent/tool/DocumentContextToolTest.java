@@ -11,6 +11,7 @@ import com.wude.nexusmind.knowledge.domain.KnowledgeChunk;
 import com.wude.nexusmind.knowledge.domain.KnowledgeDocument;
 import com.wude.nexusmind.knowledge.mapper.KnowledgeChunkMapper;
 import com.wude.nexusmind.knowledge.mapper.KnowledgeDocumentMapper;
+import com.wude.nexusmind.support.TestTokenSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.support.ToolCallbacks;
@@ -189,7 +190,8 @@ class DocumentContextToolTest {
                 new AgentProperties.DocumentContext(1, 1),
                 new AgentProperties.Memory(12));
         DocumentContextTool tool = new DocumentContextTool(
-                new DocumentContextService(chunks, documents), properties);
+                new DocumentContextService(
+                        chunks, documents, TestTokenSupport.toolBudgeter(properties)), properties);
         List<AgentStreamEvent> events = new ArrayList<>();
         AgentRunContext runContext = new AgentRunContext(
                 33L, Duration.ofSeconds(30),

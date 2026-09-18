@@ -77,6 +77,6 @@ has lost ownership emits `AGENT_SESSION_LEASE_LOST`, writes no messages, and nev
 
 - No circuit breaker or alternate-provider fallback.
 - Cancellation and cross-route future cancellation remain best effort.
-- No token-aware context budget, metrics, tracing, or dashboard.
+- Token-aware context budgeting is implemented in CP18; metrics, tracing, and dashboards remain absent.
 - The UI does not restore an Agent session after a browser refresh.
 - Historical package-structure and P2 cleanup remains deferred to V4 final cleanup.

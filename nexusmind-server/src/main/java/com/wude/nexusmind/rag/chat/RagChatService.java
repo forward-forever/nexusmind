@@ -1,10 +1,13 @@
 package com.wude.nexusmind.rag.chat;
 
 import com.wude.nexusmind.model.config.RagChatProperties;
+import com.wude.nexusmind.context.ContextBudgetExceededException;
+import com.wude.nexusmind.context.TokenBudgetCalculator;
 import com.wude.nexusmind.rag.api.RagStreamEvent;
 import com.wude.nexusmind.rag.context.RagContext;
 import com.wude.nexusmind.rag.context.RagContextBuilder;
 import com.wude.nexusmind.rag.context.RagSource;
+import com.wude.nexusmind.rag.context.RagContextProperties;
 import com.wude.nexusmind.rag.retrieval.RetrievalResult;
 import com.wude.nexusmind.rag.retrieval.RagRetrievalProperties;
 import com.wude.nexusmind.rag.retrieval.RetrievalService;
@@ -13,7 +16,6 @@ import com.wude.nexusmind.resilience.ProviderStreamingRetry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -39,25 +41,18 @@ public class RagChatService {
     private final ChatAnswerStreamer chatAnswerStreamer;
     private final RagChatProperties properties;
     private final ProviderStreamingRetry streamingRetry;
+    private final TokenBudgetCalculator tokenBudgetCalculator;
+    private final RagContextProperties contextProperties;
 
-    public RagChatService(RetrievalServiceRegistry retrievalServiceRegistry,
-                          RagRetrievalProperties retrievalProperties,
-                          RagContextBuilder contextBuilder,
-                          RagPromptFactory promptFactory,
-                          ChatAnswerStreamer chatAnswerStreamer,
-                          RagChatProperties properties) {
-        this(retrievalServiceRegistry, retrievalProperties, contextBuilder, promptFactory,
-                chatAnswerStreamer, properties, ProviderStreamingRetry.noRetry());
-    }
-
-    @Autowired
     public RagChatService(RetrievalServiceRegistry retrievalServiceRegistry,
                           RagRetrievalProperties retrievalProperties,
                           RagContextBuilder contextBuilder,
                           RagPromptFactory promptFactory,
                           ChatAnswerStreamer chatAnswerStreamer,
                           RagChatProperties properties,
-                          ProviderStreamingRetry streamingRetry) {
+                          ProviderStreamingRetry streamingRetry,
+                          TokenBudgetCalculator tokenBudgetCalculator,
+                          RagContextProperties contextProperties) {
         // 默认向量检索服务
         this.retrievalService = retrievalServiceRegistry.get(retrievalProperties.retriever());
         this.contextBuilder = contextBuilder;
@@ -65,6 +60,8 @@ public class RagChatService {
         this.chatAnswerStreamer = chatAnswerStreamer;
         this.properties = properties;
         this.streamingRetry = streamingRetry;
+        this.tokenBudgetCalculator = tokenBudgetCalculator;
+        this.contextProperties = contextProperties;
     }
 
     public Flux<RagStreamEvent> stream(long knowledgeBaseId, String question, Integer requestedTopK) {
@@ -72,10 +69,23 @@ public class RagChatService {
         int topK = resolveTopK(requestedTopK);
         long requestStarted = System.nanoTime();
 
+        int contextBudgetTokens;
+        try {
+            contextBudgetTokens = tokenBudgetCalculator.ragContextBudget(
+                    promptFactory.fixedMessages(normalizedQuestion), contextProperties.maxTokens());
+        } catch (ContextBudgetExceededException exceeded) {
+            return budgetExceededFlow();
+        }
+
         long retrievalStarted = System.nanoTime();
         RetrievalResult searchResult = retrievalService.retrieve(knowledgeBaseId, normalizedQuestion, topK);
         long retrievalLatencyMs = elapsedMillis(retrievalStarted);
-        RagContext context = contextBuilder.build(searchResult.hits());
+        RagContext context;
+        try {
+            context = contextBuilder.build(searchResult.hits(), contextBudgetTokens);
+        } catch (ContextBudgetExceededException exceeded) {
+            return budgetExceededFlow();
+        }
         logRetrieval(knowledgeBaseId, normalizedQuestion, topK, searchResult, context, retrievalLatencyMs);
         // 构建源事件
         RagStreamEvent sourcesEvent = RagStreamEvent.sources(context.sources());
@@ -84,6 +94,11 @@ public class RagChatService {
         }
 
         RagPrompt prompt = promptFactory.create(normalizedQuestion, context);
+        try {
+            tokenBudgetCalculator.validateRagMessages(promptFactory.messages(prompt));
+        } catch (ContextBudgetExceededException exceeded) {
+            return budgetExceededFlow();
+        }
         StringBuilder generatedAnswer = new StringBuilder();
         AtomicBoolean firstTokenSeen = new AtomicBoolean();
         Flux<RagStreamEvent> modelFlow = streamingRetry.execute(
@@ -135,6 +150,12 @@ public class RagChatService {
         return Flux.concat(Flux.just(sourcesEvent), modelFlow);
     }
 
+    private static Flux<RagStreamEvent> budgetExceededFlow() {
+        return Flux.just(RagStreamEvent.error(
+                "RAG_CONTEXT_BUDGET_EXCEEDED",
+                "当前问题与上下文超过应用配置的 RAG 上下文预算，请缩短问题后重试"));
+    }
+
     private Flux<RagStreamEvent> noResultsFlow(long knowledgeBaseId,
                                                 RagStreamEvent sourcesEvent,
                                                 long requestStarted) {
@@ -178,13 +199,16 @@ public class RagChatService {
                 .toList()
                 .toString();
         log.info("RAG retrieval completed: knowledgeBaseId={}, questionChars={}, topK={}, "
-                        + "retrieved={}, contextSources={}, contextChars={}, retrievalLatencyMs={}",
+                        + "retrieved={}, contextSources={}, contextChars={}, contextEstimatedTokens={}, "
+                        + "contextTruncated={}, retrievalLatencyMs={}",
                 knowledgeBaseId,
                 question.length(),
                 topK,
                 retrieved,
                 context.sources().size(),
                 context.charCount(),
+                context.estimatedTokens(),
+                context.truncated(),
                 retrievalLatencyMs);
     }
 

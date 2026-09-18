@@ -25,6 +25,7 @@ import com.wude.nexusmind.rag.retrieval.RetrievalScoreType;
 import com.wude.nexusmind.rag.retrieval.RetrievalService;
 import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
 import com.wude.nexusmind.rag.retrieval.RetrieverType;
+import com.wude.nexusmind.support.TestTokenSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -85,7 +86,8 @@ class AgentToolCallingLocalIT {
                 new AgentProperties.KnowledgeSearch(RetrieverType.DENSE, 5),
                 new AgentProperties.DocumentContext(1, 1),
                 new AgentProperties.Memory(12));
-        KnowledgeSearchTool tool = new KnowledgeSearchTool(registry, properties);
+        AgentToolResultBudgeter toolBudgeter = TestTokenSupport.toolBudgeter(properties);
+        KnowledgeSearchTool tool = new KnowledgeSearchTool(registry, properties, toolBudgeter);
         KnowledgeChunkMapper chunks = mock(KnowledgeChunkMapper.class);
         KnowledgeDocumentMapper documents = mock(KnowledgeDocumentMapper.class);
         KnowledgeChunk target = chunk(100L, 1, "target");
@@ -100,7 +102,7 @@ class AgentToolCallingLocalIT {
         when(chunks.findByDocumentIdAndChunkIndexBetween(10L, 0, 2)).thenReturn(List.of(
                 chunk(99L, 0, "before"), target, chunk(101L, 2, "after")));
         DocumentContextTool contextTool = new DocumentContextTool(
-                new DocumentContextService(chunks, documents), properties);
+                new DocumentContextService(chunks, documents, toolBudgeter), properties);
         KnowledgeBaseService knowledgeBaseService = mock(KnowledgeBaseService.class);
         KnowledgeBase knowledgeBase = new KnowledgeBase();
         knowledgeBase.setStatus(KnowledgeBaseStatus.ACTIVE);
@@ -111,7 +113,7 @@ class AgentToolCallingLocalIT {
         when(concurrency.acquire(org.mockito.ArgumentMatchers.eq(33L),
                 org.mockito.ArgumentMatchers.isNull(), org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any())).thenReturn("11111111-1111-1111-1111-111111111111");
-        when(memory.loadRecentMessages("11111111-1111-1111-1111-111111111111", 12))
+        when(memory.loadRecentMessages("11111111-1111-1111-1111-111111111111", 12, 6000))
                 .thenReturn(List.of());
         ToolCallingManager manager = ToolCallingManager.builder()
                 .toolExecutionExceptionProcessor(new DefaultToolExecutionExceptionProcessor(true))
@@ -128,7 +130,8 @@ class AgentToolCallingLocalIT {
                 new RagChatProperties("qwen3.5-flash", 0.2, 5, 10, 12_000,
                         Duration.ofSeconds(120), Duration.ofSeconds(150)),
                 Clock.systemUTC(),
-                com.wude.nexusmind.resilience.ProviderStreamingRetry.noRetry());
+                com.wude.nexusmind.resilience.ProviderStreamingRetry.noRetry(),
+                TestTokenSupport.calculator());
 
         List<ServerSentEvent<AgentStreamEvent>> events = new AgentChatController(service)
                 .chat(33L, new AgentChatRequest(null, "根据知识库解释 MVCC"))

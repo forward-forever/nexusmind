@@ -1,9 +1,12 @@
 package com.wude.nexusmind.rag.chat;
 
 import com.wude.nexusmind.model.config.RagChatProperties;
+import com.wude.nexusmind.context.TokenBudgetCalculator;
+import com.wude.nexusmind.context.TokenBudgetProperties;
 import com.wude.nexusmind.rag.api.RagStreamEvent;
 import com.wude.nexusmind.rag.context.RagContext;
 import com.wude.nexusmind.rag.context.RagContextBuilder;
+import com.wude.nexusmind.rag.context.RagContextProperties;
 import com.wude.nexusmind.rag.context.RagSource;
 import com.wude.nexusmind.rag.retrieval.RetrievalHit;
 import com.wude.nexusmind.rag.retrieval.RetrievalResult;
@@ -15,6 +18,7 @@ import com.wude.nexusmind.rag.retrieval.RetrieverType;
 import com.wude.nexusmind.resilience.AiResilienceProperties;
 import com.wude.nexusmind.resilience.ProviderFailureClassifier;
 import com.wude.nexusmind.resilience.ProviderStreamingRetry;
+import com.wude.nexusmind.support.TestTokenSupport;
 import org.junit.jupiter.api.Test;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
@@ -46,7 +50,8 @@ class RagChatServiceTest {
                 "question", 7L, "embedding", 4, RetrieverType.DENSE,
                 RetrievalScoreType.COSINE, 5, List.of()));
         RagContextBuilder contextBuilder = mock(RagContextBuilder.class);
-        when(contextBuilder.build(List.of())).thenReturn(new RagContext("", List.of(), 0));
+        when(contextBuilder.build(org.mockito.ArgumentMatchers.eq(List.of()),
+                org.mockito.ArgumentMatchers.anyInt())).thenReturn(new RagContext("", List.of(), 0));
         ChatAnswerStreamer streamer = mock(ChatAnswerStreamer.class);
         RagChatService service = new RagChatService(
                 new RetrievalServiceRegistry(List.of(dense, bm25, hybrid)),
@@ -54,7 +59,10 @@ class RagChatServiceTest {
                 contextBuilder,
                 new RagPromptFactory(),
                 streamer,
-                properties(Duration.ofMinutes(2)));
+                properties(Duration.ofMinutes(2)),
+                ProviderStreamingRetry.noRetry(),
+                TestTokenSupport.calculator(),
+                new RagContextProperties(12_000));
 
         service.stream(7L, "question", null).collectList().block();
 
@@ -67,6 +75,31 @@ class RagChatServiceTest {
                 org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    @Test
+    void fixedPromptOverflowReturnsBudgetErrorWithoutRetrievalOrModelCall() {
+        RetrievalService retrieval = mock(RetrievalService.class);
+        when(retrieval.type()).thenReturn(RetrieverType.DENSE);
+        RagContextBuilder contextBuilder = mock(RagContextBuilder.class);
+        ChatAnswerStreamer streamer = mock(ChatAnswerStreamer.class);
+        TokenBudgetCalculator tinyBudget = TestTokenSupport.calculator(
+                new TokenBudgetProperties(40, 1, 1, 1));
+        RagChatService service = new RagChatService(
+                new RetrievalServiceRegistry(List.of(retrieval)),
+                new RagRetrievalProperties(RetrieverType.DENSE), contextBuilder,
+                new RagPromptFactory(), streamer, properties(Duration.ofMinutes(2)),
+                ProviderStreamingRetry.noRetry(), tinyBudget, new RagContextProperties(20));
+
+        List<RagStreamEvent> events = service.stream(7L, "question", 5).collectList().block();
+
+        assertThat(events).extracting(RagStreamEvent::type).containsExactly("error");
+        assertThat(events.get(0).code()).isEqualTo("RAG_CONTEXT_BUDGET_EXCEEDED");
+        verify(retrieval, never()).retrieve(
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyInt());
+        verify(streamer, never()).stream(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -151,7 +184,8 @@ class RagChatServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("milvus unavailable");
 
-        verify(contextBuilder, never()).build(org.mockito.ArgumentMatchers.anyList());
+        verify(contextBuilder, never()).build(
+                org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.anyInt());
         verify(streamer, never()).stream(org.mockito.ArgumentMatchers.any());
     }
 
@@ -164,7 +198,8 @@ class RagChatServiceTest {
                 new RetrievalResult(
                         "unknown", 7L, "embedding", 4, RetrieverType.DENSE,
                         RetrievalScoreType.COSINE, 5, List.of()));
-        when(contextBuilder.build(List.of())).thenReturn(new RagContext("", List.of(), 0));
+        when(contextBuilder.build(org.mockito.ArgumentMatchers.eq(List.of()),
+                org.mockito.ArgumentMatchers.anyInt())).thenReturn(new RagContext("", List.of(), 0));
 
         List<RagStreamEvent> events = service(retrieval, contextBuilder, streamer)
                 .stream(7L, "unknown", null).collectList().block();
@@ -226,7 +261,8 @@ class RagChatServiceTest {
                 .thenReturn(new RetrievalResult(
                         "question", 7L, "embedding", 4, RetrieverType.DENSE,
                         RetrievalScoreType.COSINE, 5, List.of(hit)));
-        when(contextBuilder.build(List.of(hit))).thenReturn(context);
+        when(contextBuilder.build(org.mockito.ArgumentMatchers.eq(List.of(hit)),
+                org.mockito.ArgumentMatchers.anyInt())).thenReturn(context);
         when(streamer.stream(org.mockito.ArgumentMatchers.any())).thenReturn(modelFlux);
         return new Fixture(service(
                 retrieval, contextBuilder, streamer, streamTimeout, streamingRetry), retrieval);
@@ -242,7 +278,10 @@ class RagChatServiceTest {
                 contextBuilder,
                 new RagPromptFactory(),
                 streamer,
-                properties(Duration.ofMinutes(2)));
+                properties(Duration.ofMinutes(2)),
+                ProviderStreamingRetry.noRetry(),
+                TestTokenSupport.calculator(),
+                new RagContextProperties(12_000));
     }
 
     private static RagChatService service(RetrievalService retrieval,
@@ -266,7 +305,9 @@ class RagChatServiceTest {
                 new RagPromptFactory(),
                 streamer,
                 properties(streamTimeout),
-                streamingRetry);
+                streamingRetry,
+                TestTokenSupport.calculator(),
+                new RagContextProperties(12_000));
     }
 
     private static ProviderStreamingRetry retryingStreamingPolicy() {

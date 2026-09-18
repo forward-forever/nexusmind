@@ -46,6 +46,16 @@ public final class AgentExecutionException extends RuntimeException {
                 "AGENT_SESSION_LEASE_LOST", "当前 Agent 运行已失去会话所有权", cause);
     }
 
+    public static AgentExecutionException contextBudget(Throwable cause) {
+        return new AgentExecutionException(
+                "AGENT_CONTEXT_BUDGET_EXCEEDED",
+                "当前对话超过 Agent 上下文预算，请开始新会话或缩短问题后重试", cause);
+    }
+
+    public static AgentExecutionException contextBudget() {
+        return contextBudget(null);
+    }
+
     public String code() {
         return code;
     }

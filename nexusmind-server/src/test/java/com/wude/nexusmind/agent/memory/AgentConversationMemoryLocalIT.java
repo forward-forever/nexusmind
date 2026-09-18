@@ -28,6 +28,7 @@ import com.wude.nexusmind.rag.retrieval.RetrievalScoreType;
 import com.wude.nexusmind.rag.retrieval.RetrievalService;
 import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
 import com.wude.nexusmind.rag.retrieval.RetrieverType;
+import com.wude.nexusmind.support.TestTokenSupport;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClientResponse;
@@ -150,8 +151,10 @@ class AgentConversationMemoryLocalIT {
                 new AgentProperties.KnowledgeSearch(RetrieverType.DENSE, 5),
                 new AgentProperties.DocumentContext(1, 1),
                 new AgentProperties.Memory(12));
+        com.wude.nexusmind.agent.application.AgentToolResultBudgeter toolBudgeter =
+                TestTokenSupport.toolBudgeter(properties);
         KnowledgeSearchTool searchTool = new KnowledgeSearchTool(
-                new RetrievalServiceRegistry(List.of(retrieval)), properties);
+                new RetrievalServiceRegistry(List.of(retrieval)), properties, toolBudgeter);
         KnowledgeChunkMapper chunks = mock(KnowledgeChunkMapper.class);
         KnowledgeDocumentMapper documents = mock(KnowledgeDocumentMapper.class);
         KnowledgeChunk target = chunk(100L, 1, "target");
@@ -166,7 +169,7 @@ class AgentConversationMemoryLocalIT {
         document.setIndexStatus(DocumentIndexStatus.INDEXED);
         when(documents.findById(10L)).thenReturn(Optional.of(document));
         DocumentContextTool contextTool = new DocumentContextTool(
-                new DocumentContextService(chunks, documents), properties);
+                new DocumentContextService(chunks, documents, toolBudgeter), properties);
         KnowledgeBaseService knowledgeBases = mock(KnowledgeBaseService.class);
         KnowledgeBase knowledgeBase = new KnowledgeBase();
         knowledgeBase.setId(33L);
@@ -181,7 +184,8 @@ class AgentConversationMemoryLocalIT {
                 new RagChatProperties("qwen3.5-flash", 0.2, 5, 10, 12_000,
                         Duration.ofSeconds(120), Duration.ofSeconds(150)),
                 Clock.systemUTC(),
-                com.wude.nexusmind.resilience.ProviderStreamingRetry.noRetry());
+                com.wude.nexusmind.resilience.ProviderStreamingRetry.noRetry(),
+                TestTokenSupport.calculator());
     }
 
     private static KnowledgeChunk chunk(long id, int index, String content) {

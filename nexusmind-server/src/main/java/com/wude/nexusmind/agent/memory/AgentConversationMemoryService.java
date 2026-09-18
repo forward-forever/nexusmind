@@ -5,6 +5,7 @@ import com.wude.nexusmind.agent.memory.domain.AgentMessageRole;
 import com.wude.nexusmind.agent.memory.domain.AgentSessionEntity;
 import com.wude.nexusmind.agent.memory.mapper.AgentMessageMapper;
 import com.wude.nexusmind.agent.memory.mapper.AgentSessionMapper;
+import com.wude.nexusmind.context.NexusTokenEstimator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -31,13 +32,16 @@ public class AgentConversationMemoryService {
     private final AgentSessionMapper sessionMapper;
     private final AgentMessageMapper messageMapper;
     private final HistoricalCitationSanitizer citationSanitizer;
+    private final NexusTokenEstimator tokenEstimator;
 
     public AgentConversationMemoryService(AgentSessionMapper sessionMapper,
                                           AgentMessageMapper messageMapper,
-                                          HistoricalCitationSanitizer citationSanitizer) {
+                                          HistoricalCitationSanitizer citationSanitizer,
+                                          NexusTokenEstimator tokenEstimator) {
         this.sessionMapper = sessionMapper;
         this.messageMapper = messageMapper;
         this.citationSanitizer = citationSanitizer;
+        this.tokenEstimator = tokenEstimator;
     }
 
     @Transactional
@@ -70,6 +74,55 @@ public class AgentConversationMemoryService {
         List<AgentMessageEntity> chronological = new ArrayList<>(descending);
         Collections.reverse(chronological);
         return chronological.stream().map(this::toMessage).toList();
+    }
+
+    public List<Message> loadRecentMessages(String sessionId,
+                                            int maxMessages,
+                                            int maxTokens) {
+        if (maxMessages < 1) {
+            throw new IllegalArgumentException("Memory maxMessages must be positive");
+        }
+        if (maxTokens < 0) {
+            throw new IllegalArgumentException("Memory maxTokens must not be negative");
+        }
+        int completeMessageLimit = maxMessages - maxMessages % 2;
+        if (completeMessageLimit == 0 || maxTokens == 0) {
+            return List.of();
+        }
+
+        List<AgentMessageEntity> descending = messageMapper.findRecentBySessionId(
+                sessionId, completeMessageLimit);
+        List<AgentMessageEntity> chronological = new ArrayList<>(descending);
+        Collections.reverse(chronological);
+        List<List<Message>> turns = completeTurns(chronological);
+        List<List<Message>> selectedNewestFirst = new ArrayList<>();
+        int usedTokens = 0;
+        for (int index = turns.size() - 1; index >= 0; index--) {
+            List<Message> turn = turns.get(index);
+            int turnTokens = tokenEstimator.estimateMessages(turn);
+            if (usedTokens + turnTokens > maxTokens) {
+                break;
+            }
+            selectedNewestFirst.add(turn);
+            usedTokens += turnTokens;
+        }
+        Collections.reverse(selectedNewestFirst);
+        return selectedNewestFirst.stream().flatMap(List::stream).toList();
+    }
+
+    private List<List<Message>> completeTurns(List<AgentMessageEntity> chronological) {
+        List<List<Message>> turns = new ArrayList<>();
+        for (int index = 0; index + 1 < chronological.size(); index += 2) {
+            AgentMessageEntity user = chronological.get(index);
+            AgentMessageEntity assistant = chronological.get(index + 1);
+            if (user.getRole() != AgentMessageRole.USER
+                    || assistant.getRole() != AgentMessageRole.ASSISTANT) {
+                throw new IllegalStateException("Agent memory does not contain complete turns");
+            }
+            // Citation sanitation happens in toMessage before token estimation.
+            turns.add(List.of(toMessage(user), toMessage(assistant)));
+        }
+        return turns;
     }
 
     @Transactional

@@ -5,6 +5,7 @@ import com.wude.nexusmind.agent.memory.domain.AgentMessageRole;
 import com.wude.nexusmind.agent.memory.domain.AgentSessionEntity;
 import com.wude.nexusmind.agent.memory.mapper.AgentMessageMapper;
 import com.wude.nexusmind.agent.memory.mapper.AgentSessionMapper;
+import com.wude.nexusmind.support.TestTokenSupport;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -98,6 +99,64 @@ class AgentConversationMemoryServiceTest {
     }
 
     @Test
+    void tokenWindowDropsOldestCompleteTurnsAndKeepsRecentTurnsWithoutDeletingRows() {
+        Fixture fixture = fixture();
+        when(fixture.messages.findRecentBySessionId(SESSION_ID, 6)).thenReturn(List.of(
+                message(6L, AgentMessageRole.ASSISTANT, "A3"),
+                message(5L, AgentMessageRole.USER, "U3"),
+                message(4L, AgentMessageRole.ASSISTANT, "A2"),
+                message(3L, AgentMessageRole.USER, "U2"),
+                message(2L, AgentMessageRole.ASSISTANT, "A1"),
+                message(1L, AgentMessageRole.USER, "U1")));
+
+        List<Message> result = fixture.service.loadRecentMessages(SESSION_ID, 6, 44);
+
+        assertThat(result).extracting(Message::getText)
+                .containsExactly("U2", "A2", "U3", "A3");
+        verify(fixture.messages, never()).insert(any());
+    }
+
+    @Test
+    void tokenAwareLoadAlsoAppliesTheConfiguredMessageCountLimit() {
+        Fixture fixture = fixture();
+        when(fixture.messages.findRecentBySessionId(SESSION_ID, 4)).thenReturn(List.of(
+                message(6L, AgentMessageRole.ASSISTANT, "A3"),
+                message(5L, AgentMessageRole.USER, "U3"),
+                message(4L, AgentMessageRole.ASSISTANT, "A2"),
+                message(3L, AgentMessageRole.USER, "U2")));
+
+        List<Message> result = fixture.service.loadRecentMessages(SESSION_ID, 4, 10_000);
+
+        assertThat(result).extracting(Message::getText)
+                .containsExactly("U2", "A2", "U3", "A3");
+        verify(fixture.messages).findRecentBySessionId(SESSION_ID, 4);
+    }
+
+    @Test
+    void sanitizesHistoricalCitationsBeforeEstimatingTheWholeTurn() {
+        Fixture fixture = fixture();
+        AgentMessageEntity assistant = message(
+                2L, AgentMessageRole.ASSISTANT, "A[S1][S222][S3333]");
+        when(fixture.messages.findRecentBySessionId(SESSION_ID, 2)).thenReturn(List.of(
+                assistant, message(1L, AgentMessageRole.USER, "U")));
+
+        List<Message> result = fixture.service.loadRecentMessages(SESSION_ID, 2, 19);
+
+        assertThat(result).extracting(Message::getText).containsExactly("U", "A");
+        assertThat(assistant.getContent()).isEqualTo("A[S1][S222][S3333]");
+    }
+
+    @Test
+    void dropsAnOversizedMostRecentHistoricalTurnWithoutTruncatingMessages() {
+        Fixture fixture = fixture();
+        when(fixture.messages.findRecentBySessionId(SESSION_ID, 2)).thenReturn(List.of(
+                message(2L, AgentMessageRole.ASSISTANT, "A".repeat(20)),
+                message(1L, AgentMessageRole.USER, "U".repeat(20))));
+
+        assertThat(fixture.service.loadRecentMessages(SESSION_ID, 2, 10)).isEmpty();
+    }
+
+    @Test
     void sessionsDoNotShareMessages() {
         Fixture fixture = fixture();
         String sessionA = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
@@ -145,7 +204,8 @@ class AgentConversationMemoryServiceTest {
         AgentMessageMapper messages = mock(AgentMessageMapper.class);
         return new Fixture(
                 new AgentConversationMemoryService(
-                        sessions, messages, new HistoricalCitationSanitizer()),
+                        sessions, messages, new HistoricalCitationSanitizer(),
+                        TestTokenSupport.estimator()),
                 sessions, messages);
     }
 
