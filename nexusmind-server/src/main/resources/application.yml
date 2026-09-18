@@ -6,6 +6,21 @@ spring:
       max-file-size: ${NEXUSMIND_MAX_FILE_SIZE:20MB}
       max-request-size: ${NEXUSMIND_MAX_FILE_SIZE:20MB}
   ai:
+    mcp:
+      client:
+        enabled: ${NEXUSMIND_MCP_ENABLED:false}
+        initialized: true
+        type: SYNC
+        request-timeout: ${MCP_REQUEST_TIMEOUT:8s}
+        toolcallback:
+          enabled: true
+        streamable-http:
+          connections:
+            demo:
+              url: ${MCP_DEMO_BASE_URL:https://mcp.api-inference.modelscope.net}
+              endpoint: ${MCP_DEMO_ENDPOINT:}
+      server:
+        enabled: false
     model:
       chat: none
       embedding: none
@@ -42,6 +57,10 @@ info:
     description: NexusMind AI Knowledge & Agent Platform
 
 nexusmind:
+  mcp:
+    enabled: ${NEXUSMIND_MCP_ENABLED:false}
+    allowed-tools: ${MCP_ALLOWED_TOOLS:mcp_12306_mcp_get_current_date,mcp_12306_mcp_get_interline_tickets,mcp_12306_mcp_get_station_by_telecode,mcp_12306_mcp_get_station_code_by_names,mcp_12306_mcp_get_station_code_of_citys,mcp_12306_mcp_get_stations_code_in_city,mcp_12306_mcp_get_tickets,mcp_12306_mcp_get_train_route_stations}
+    request-timeout: ${MCP_REQUEST_TIMEOUT:8s}
   document-task:
     enabled: false
     worker-enabled: true
@@ -85,7 +104,7 @@ nexusmind:
       max-context-tokens: 32768
       reserved-output-tokens: 4096
       safety-margin-tokens: 4096
-      tool-definition-reserve-tokens: 2048
+      tool-definition-reserve-tokens: 4096
     resilience:
       max-retries: 2
       initial-delay: 200ms

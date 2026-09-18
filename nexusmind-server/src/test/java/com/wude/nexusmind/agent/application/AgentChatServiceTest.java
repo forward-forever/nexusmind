@@ -8,8 +8,12 @@ import com.wude.nexusmind.agent.memory.AgentSessionBusyException;
 import com.wude.nexusmind.agent.prompt.AgentPromptFactory;
 import com.wude.nexusmind.agent.stream.AgentStreamEvent;
 import com.wude.nexusmind.agent.tool.AgentToolSet;
+import com.wude.nexusmind.agent.tool.AgentToolCatalog;
 import com.wude.nexusmind.agent.tool.DocumentContextTool;
 import com.wude.nexusmind.agent.tool.KnowledgeSearchTool;
+import com.wude.nexusmind.agent.mcp.BudgetedMcpToolCallback;
+import com.wude.nexusmind.agent.mcp.McpProperties;
+import com.wude.nexusmind.agent.mcp.McpToolResultBudgeter;
 import com.wude.nexusmind.knowledge.domain.KnowledgeBase;
 import com.wude.nexusmind.knowledge.domain.KnowledgeBaseStatus;
 import com.wude.nexusmind.knowledge.domain.DocumentIndexStatus;
@@ -39,6 +43,9 @@ import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.tool.execution.DefaultToolExecutionExceptionProcessor;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
+import tools.jackson.databind.ObjectMapper;
 import reactor.core.publisher.Flux;
 
 import java.time.Clock;
@@ -289,6 +296,42 @@ class AgentChatServiceTest {
     }
 
     @Test
+    void nativeAndMcpCallsShareTheExistingToolLoopAndCount() {
+        Fixture fixture = fixtureWithMcp(false,
+                Flux.just(toolCalls(
+                        call("call-1", "MVCC"),
+                        mcpCall("call-2", "{\"secret\":\"hidden\"}"))),
+                Flux.just(text("combined answer [S1]")));
+
+        List<AgentStreamEvent> events = fixture.service.chat(33L, "combine sources")
+                .collectList().block(Duration.ofSeconds(2));
+
+        assertThat(events).extracting(AgentStreamEvent::type)
+                .containsExactly("tool_start", "tool_result", "tool_start", "tool_result",
+                        "assistant_delta", "done");
+        assertThat(events).filteredOn(event -> "tool_start".equals(event.type()))
+                .extracting(AgentStreamEvent::toolName)
+                .containsExactly("search_knowledge_base", "mcp_demo_echo");
+        assertThat(events).filteredOn(event -> "mcp_demo_echo".equals(event.toolName()))
+                .allMatch(event -> event.arguments() == null || event.arguments().isEmpty());
+        assertThat(events.get(events.size() - 1).toolCallCount()).isEqualTo(2);
+    }
+
+    @Test
+    void mcpFailureUsesGenericToolLifecycleThenTerminatesAgent() {
+        Fixture fixture = fixtureWithMcp(true,
+                Flux.just(toolCalls(mcpCall("call-1", "{\"secret\":\"hidden\"}"))));
+
+        List<AgentStreamEvent> events = fixture.service.chat(33L, "external request")
+                .collectList().block(Duration.ofSeconds(2));
+
+        assertThat(events).extracting(AgentStreamEvent::type)
+                .containsExactly("tool_start", "tool_error", "error");
+        assertThat(events.get(2).code()).isEqualTo("AGENT_MCP_TOOL_ERROR");
+        assertThat(events).noneMatch(event -> "done".equals(event.type()));
+    }
+
+    @Test
     void sameSessionLoadsHistoryBeforeCurrentUserAndDoesNotDuplicateItAcrossToolTurns() {
         String sessionId = "22222222-2222-2222-2222-222222222222";
         Fixture fixture = fixture(5, Clock.systemUTC(), false,
@@ -504,7 +547,7 @@ class AgentChatServiceTest {
                                    com.wude.nexusmind.resilience.ProviderStreamingRetry streamingRetry,
                                    Flux<ChatClientResponse>... turns) {
         return fixture(maxToolCalls, clock, retrievalFails, streamingRetry,
-                TestTokenSupport.calculator(), turns);
+                TestTokenSupport.calculator(), false, false, turns);
     }
 
     @SafeVarargs
@@ -513,6 +556,27 @@ class AgentChatServiceTest {
                                    boolean retrievalFails,
                                    com.wude.nexusmind.resilience.ProviderStreamingRetry streamingRetry,
                                    TokenBudgetCalculator tokenBudgetCalculator,
+                                   Flux<ChatClientResponse>... turns) {
+        return fixture(maxToolCalls, clock, retrievalFails, streamingRetry,
+                tokenBudgetCalculator, false, false, turns);
+    }
+
+    @SafeVarargs
+    private static Fixture fixtureWithMcp(boolean mcpFails,
+                                          Flux<ChatClientResponse>... turns) {
+        return fixture(5, Clock.systemUTC(), false,
+                com.wude.nexusmind.resilience.ProviderStreamingRetry.noRetry(),
+                TestTokenSupport.calculator(), true, mcpFails, turns);
+    }
+
+    @SafeVarargs
+    private static Fixture fixture(int maxToolCalls,
+                                   Clock clock,
+                                   boolean retrievalFails,
+                                   com.wude.nexusmind.resilience.ProviderStreamingRetry streamingRetry,
+                                   TokenBudgetCalculator tokenBudgetCalculator,
+                                   boolean includeMcp,
+                                   boolean mcpFails,
                                    Flux<ChatClientResponse>... turns) {
         RetrievalService retrieval = mock(RetrievalService.class);
         when(retrieval.type()).thenReturn(RetrieverType.DENSE);
@@ -558,11 +622,41 @@ class AgentChatServiceTest {
                 memory.resolveSession(33L, invocation.getArgument(1)));
         when(memory.loadRecentMessages("11111111-1111-1111-1111-111111111111", 12, 6000))
                 .thenReturn(List.of());
+        AgentToolSet nativeTools = new AgentToolSet(tool, contextTool);
+        List<ToolCallback> mcpTools;
+        if (includeMcp) {
+            ToolCallback delegate = new ToolCallback() {
+                @Override
+                public ToolDefinition getToolDefinition() {
+                    return ToolDefinition.builder().name("mcp_demo_echo")
+                            .description("external echo")
+                            .inputSchema("{\"type\":\"object\"}").build();
+                }
+
+                @Override
+                public String call(String toolInput) {
+                    if (mcpFails) {
+                        throw new IllegalStateException("remote secret must not escape");
+                    }
+                    return "external result";
+                }
+            };
+            mcpTools = List.of(new BudgetedMcpToolCallback(
+                    delegate,
+                    new McpToolResultBudgeter(new ObjectMapper(), TestTokenSupport.estimator(),
+                            TestTokenSupport.truncator(), properties),
+                    new McpProperties(true, List.of("mcp_demo_echo"), Duration.ofSeconds(8))));
+        } else {
+            mcpTools = List.of();
+        }
+        AgentToolCatalog catalog = new AgentToolCatalog(
+                nativeTools.callbacks(), mcpTools, new ObjectMapper(),
+                TestTokenSupport.estimator(), 10_000);
         AgentChatService service = new AgentChatService(
                 knowledgeBaseService,
                 streamer,
                 toolCallingManager(),
-                new AgentToolSet(tool, contextTool),
+                catalog,
                 new AgentPromptFactory(),
                 memory,
                 concurrency,
@@ -603,6 +697,11 @@ class AgentChatServiceTest {
         return new AssistantMessage.ToolCall(
                 id, "function", DocumentContextTool.TOOL_NAME,
                 "{\"sourceId\":\"" + sourceId + "\"}");
+    }
+
+    private static AssistantMessage.ToolCall mcpCall(String id, String arguments) {
+        return new AssistantMessage.ToolCall(
+                id, "function", "mcp_demo_echo", arguments);
     }
 
     private static ChatClientResponse toolCalls(AssistantMessage.ToolCall... calls) {

@@ -5,10 +5,12 @@ import com.wude.nexusmind.agent.memory.AgentConversationMemoryService;
 import com.wude.nexusmind.agent.memory.AgentSessionBusyException;
 import com.wude.nexusmind.agent.memory.AgentSessionConcurrencyService;
 import com.wude.nexusmind.agent.memory.AgentSessionLeaseLostException;
+import com.wude.nexusmind.agent.mcp.McpToolExecutionException;
 import com.wude.nexusmind.agent.prompt.AgentPromptFactory;
 import com.wude.nexusmind.agent.stream.AgentStreamEvent;
 import com.wude.nexusmind.agent.stream.AgentToolEventPublisher;
 import com.wude.nexusmind.agent.tool.AgentToolSet;
+import com.wude.nexusmind.agent.tool.AgentToolCatalog;
 import com.wude.nexusmind.agent.tool.KnowledgeSearchTool;
 import com.wude.nexusmind.knowledge.domain.KnowledgeBase;
 import com.wude.nexusmind.knowledge.domain.KnowledgeBaseStatus;
@@ -31,6 +33,7 @@ import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.execution.ToolExecutionException;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -56,7 +59,7 @@ public class AgentChatService {
     private final KnowledgeBaseService knowledgeBaseService;
     private final AgentModelTurnStreamer modelTurnStreamer;
     private final ToolCallingManager toolCallingManager;
-    private final AgentToolSet toolSet;
+    private final AgentToolCatalog toolCatalog;
     private final AgentPromptFactory promptFactory;
     private final AgentConversationMemoryService memoryService;
     private final AgentSessionConcurrencyService sessionConcurrencyService;
@@ -66,10 +69,11 @@ public class AgentChatService {
     private final ProviderStreamingRetry streamingRetry;
     private final TokenBudgetCalculator tokenBudgetCalculator;
 
+    @Autowired
     public AgentChatService(KnowledgeBaseService knowledgeBaseService,
                             AgentModelTurnStreamer modelTurnStreamer,
                             @Qualifier("agentToolCallingManager") ToolCallingManager toolCallingManager,
-                            AgentToolSet toolSet,
+                            AgentToolCatalog toolCatalog,
                             AgentPromptFactory promptFactory,
                             AgentConversationMemoryService memoryService,
                             AgentSessionConcurrencyService sessionConcurrencyService,
@@ -81,7 +85,7 @@ public class AgentChatService {
         this.knowledgeBaseService = knowledgeBaseService;
         this.modelTurnStreamer = modelTurnStreamer;
         this.toolCallingManager = toolCallingManager;
-        this.toolSet = toolSet;
+        this.toolCatalog = toolCatalog;
         this.promptFactory = promptFactory;
         this.memoryService = memoryService;
         this.sessionConcurrencyService = sessionConcurrencyService;
@@ -90,6 +94,24 @@ public class AgentChatService {
         this.clock = clock;
         this.streamingRetry = streamingRetry;
         this.tokenBudgetCalculator = tokenBudgetCalculator;
+    }
+
+    public AgentChatService(KnowledgeBaseService knowledgeBaseService,
+                            AgentModelTurnStreamer modelTurnStreamer,
+                            ToolCallingManager toolCallingManager,
+                            AgentToolSet toolSet,
+                            AgentPromptFactory promptFactory,
+                            AgentConversationMemoryService memoryService,
+                            AgentSessionConcurrencyService sessionConcurrencyService,
+                            AgentProperties properties,
+                            RagChatProperties chatProperties,
+                            Clock clock,
+                            ProviderStreamingRetry streamingRetry,
+                            TokenBudgetCalculator tokenBudgetCalculator) {
+        this(knowledgeBaseService, modelTurnStreamer, toolCallingManager,
+                AgentToolCatalog.nativeOnly(toolSet), promptFactory, memoryService,
+                sessionConcurrencyService, properties, chatProperties, clock,
+                streamingRetry, tokenBudgetCalculator);
     }
 
     public Flux<AgentStreamEvent> chat(long knowledgeBaseId, String message) {
@@ -140,7 +162,7 @@ public class AgentChatService {
             ToolCallingChatOptions.Builder optionsBuilder = ToolCallingChatOptions.builder()
                     .model(chatProperties.model())
                     .temperature(chatProperties.temperature())
-                    .toolCallbacks(toolSet.callbacks())
+                    .toolCallbacks(toolCatalog.callbacks())
                     .toolContext(Map.of(
                             KnowledgeSearchTool.CONTEXT_KNOWLEDGE_BASE_ID, knowledgeBaseId,
                             KnowledgeSearchTool.CONTEXT_AGENT_RUN, runContext));
@@ -364,6 +386,9 @@ public class AgentChatService {
         }
         if (hasCause(error, ContextBudgetExceededException.class)) {
             return AgentExecutionException.contextBudget(error);
+        }
+        if (hasCause(error, McpToolExecutionException.class)) {
+            return AgentExecutionException.mcpTool(error);
         }
         if (error instanceof ToolExecutionException || hasCause(error, ToolExecutionException.class)) {
             return AgentExecutionException.tool(error);

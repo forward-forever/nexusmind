@@ -1,0 +1,21 @@
+spring:
+  ai:
+    mcp:
+      client:
+        enabled: ${NEXUSMIND_MCP_ENABLED:false}
+        initialized: true
+        type: SYNC
+        request-timeout: ${MCP_REQUEST_TIMEOUT:8s}
+        toolcallback:
+          enabled: true
+        streamable-http:
+          connections:
+            demo:
+              url: ${MCP_DEMO_BASE_URL:}
+              endpoint: ${MCP_DEMO_ENDPOINT:/mcp}
+
+nexusmind:
+  mcp:
+    enabled: ${NEXUSMIND_MCP_ENABLED:false}
+    allowed-tools: ${MCP_ALLOWED_TOOLS:}
+    request-timeout: ${MCP_REQUEST_TIMEOUT:8s}

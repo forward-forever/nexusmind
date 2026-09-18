@@ -8,12 +8,15 @@ import com.wude.nexusmind.agent.application.SpringAiAgentModelTurnStreamer;
 import com.wude.nexusmind.agent.prompt.AgentPromptFactory;
 import com.wude.nexusmind.agent.memory.HistoricalCitationSanitizer;
 import com.wude.nexusmind.agent.tool.AgentToolSet;
+import com.wude.nexusmind.agent.tool.AgentToolCatalog;
+import com.wude.nexusmind.agent.mcp.McpToolRegistry;
 import com.wude.nexusmind.agent.tool.DocumentContextTool;
 import com.wude.nexusmind.agent.tool.KnowledgeSearchTool;
 import com.wude.nexusmind.knowledge.mapper.KnowledgeChunkMapper;
 import com.wude.nexusmind.knowledge.mapper.KnowledgeDocumentMapper;
 import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
 import com.wude.nexusmind.context.NexusTokenEstimator;
+import com.wude.nexusmind.context.TokenBudgetProperties;
 import com.wude.nexusmind.context.TokenTextTruncator;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.model.tool.ToolCallingManager;
@@ -67,6 +70,17 @@ public class AgentConfiguration {
     AgentToolSet agentToolSet(KnowledgeSearchTool knowledgeSearchTool,
                               DocumentContextTool documentContextTool) {
         return new AgentToolSet(knowledgeSearchTool, documentContextTool);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "nexusmind.agent.enabled", havingValue = "true")
+    AgentToolCatalog agentToolCatalog(AgentToolSet nativeTools,
+                                      McpToolRegistry mcpTools,
+                                      ObjectMapper objectMapper,
+                                      NexusTokenEstimator estimator,
+                                      TokenBudgetProperties tokenBudgetProperties) {
+        return new AgentToolCatalog(
+                nativeTools, mcpTools, objectMapper, estimator, tokenBudgetProperties);
     }
 
     @Bean(name = "agentToolCallingManager")

@@ -85,6 +85,15 @@ public final class AgentRunContext {
         return Duration.between(clock.instant(), deadline);
     }
 
+    public void ensureMinimumTimeRemaining(Duration minimum) {
+        if (minimum == null || minimum.isNegative() || minimum.isZero()) {
+            throw new IllegalArgumentException("Minimum remaining duration must be positive");
+        }
+        if (remaining().compareTo(minimum) < 0) {
+            throw AgentExecutionException.timeout();
+        }
+    }
+
     public void reserveToolCalls(int requested, int limit) {
         if (requested < 1) {
             throw new IllegalArgumentException("Requested tool-call count must be positive");

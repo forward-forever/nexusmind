@@ -31,6 +31,11 @@ public final class AgentExecutionException extends RuntimeException {
                 "AGENT_TOOL_ERROR", "知识库工具执行失败，请稍后重试", cause);
     }
 
+    public static AgentExecutionException mcpTool(Throwable cause) {
+        return new AgentExecutionException(
+                "AGENT_MCP_TOOL_ERROR", "MCP tool execution failed", cause);
+    }
+
     public static AgentExecutionException internal(Throwable cause) {
         return new AgentExecutionException(
                 "AGENT_INTERNAL_ERROR", "Agent 执行失败，请稍后重试", cause);

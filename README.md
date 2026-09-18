@@ -16,7 +16,8 @@ MySQL Chunk → Dense / BM25 → Application RRF → Cross-Encoder Rerank
 Question → Configured RetrievalService → Context → qwen3.5-flash → SSE Answer + Citation
 Browser → Knowledge Base → Upload → Process → Index → RAG + Retrieval Lab
 Agent → qwen3.5-flash tool decision → KnowledgeSearchTool / DocumentContextTool
-      → Multi-step tool loop → Conversation Memory → final answer + Tool Trace
+      / allowlisted Remote MCP Tools → Multi-step tool loop → Conversation Memory
+      → final answer + Tool Trace
 HTTP Process / Index → MySQL Durable Task → Background Worker → Recovery
 ```
 
@@ -27,6 +28,7 @@ V3 的完整架构、Guardrails、Behavior Evaluation 与限制见 [`docs/v3-age
 V4 异步文档任务的状态机、幂等与恢复设计见 [`docs/async-document-tasks.md`](docs/async-document-tasks.md)。
 V4 Provider 重试、Hybrid 并行与 Agent Session Lease 设计见 [`docs/resilience-concurrency.md`](docs/resilience-concurrency.md)。
 V4 Token Budget、RAG Context、Agent Memory 与 Tool Result 管理见 [`docs/token-context-management.md`](docs/token-context-management.md)。
+V4 受控 Streamable HTTP MCP Client、Allowlist 与 Trust Boundary 见 [`docs/mcp-client-integration.md`](docs/mcp-client-integration.md)。
 
 ## Retrieval Architecture
 
@@ -74,6 +76,7 @@ V1 Fixed RAG 与 V3 Agent 是两个独立入口：前者固定执行 Retrieval �
 - Maven
 - Spring Boot 4.1.0
 - Spring AI 2.0.1
+- Spring AI MCP Client（Remote Streamable HTTP）
 - Spring MVC
 - MyBatis 4.1.0 / Flyway
 - MySQL 8.4.11 / Milvus 2.6.22
@@ -107,3 +110,4 @@ V1 Fixed RAG 与 V3 Agent 是两个独立入口：前者固定执行 Retrieval �
   - Durable Async Document Processing / Indexing ✅
   - Provider Resilience / Parallel Hybrid / Agent Session Concurrency ✅
   - Token / Context Management ✅
+  - Controlled MCP Client / External Tool Integration ✅
