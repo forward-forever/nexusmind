@@ -1,5 +1,10 @@
 package com.wude.nexusmind.knowledge.task;
 
+import com.wude.nexusmind.knowledge.task.domain.DocumentTaskStatus;
+import com.wude.nexusmind.knowledge.task.domain.DocumentTaskType;
+import com.wude.nexusmind.knowledge.task.infrastructure.persistence.DocumentTaskMapper;
+import com.wude.nexusmind.knowledge.task.infrastructure.persistence.KnowledgeDocumentTask;
+
 import com.wude.nexusmind.knowledge.domain.DocumentIndexStatus;
 import com.wude.nexusmind.knowledge.domain.DocumentStatus;
 import com.wude.nexusmind.knowledge.domain.KnowledgeDocument;

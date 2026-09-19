@@ -10,6 +10,8 @@ import com.wude.nexusmind.context.ContextBudgetExceededException;
 import com.wude.nexusmind.rag.retrieval.RetrievalResult;
 import com.wude.nexusmind.rag.retrieval.RetrievalService;
 import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
+import com.wude.nexusmind.observability.NexusMindMetrics;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.model.ToolContext;
@@ -32,13 +34,22 @@ public final class KnowledgeSearchTool {
     private final RetrievalServiceRegistry retrievalServiceRegistry;
     private final AgentProperties properties;
     private final AgentToolResultBudgeter resultBudgeter;
+    private final NexusMindMetrics metrics;
 
     public KnowledgeSearchTool(RetrievalServiceRegistry retrievalServiceRegistry,
                                AgentProperties properties,
                                AgentToolResultBudgeter resultBudgeter) {
+        this(retrievalServiceRegistry, properties, resultBudgeter, NexusMindMetrics.noop());
+    }
+
+    public KnowledgeSearchTool(RetrievalServiceRegistry retrievalServiceRegistry,
+                               AgentProperties properties,
+                               AgentToolResultBudgeter resultBudgeter,
+                               NexusMindMetrics metrics) {
         this.retrievalServiceRegistry = retrievalServiceRegistry;
         this.properties = properties;
         this.resultBudgeter = resultBudgeter;
+        this.metrics = metrics;
     }
 
     @Tool(
@@ -67,6 +78,7 @@ public final class KnowledgeSearchTool {
                 runContext.runId(), runContext.sessionId(), invocationId, TOOL_NAME,
                 Map.of("query", normalizedQuery)));
         long startedAt = System.nanoTime();
+        Timer.Sample metricSample = metrics.start();
 
         try {
             RetrievalService retrievalService = retrievalServiceRegistry.get(
@@ -88,10 +100,13 @@ public final class KnowledgeSearchTool {
                             + "resultCount={}, durationMs={}",
                     runContext.runId(), TOOL_NAME, knowledgeBaseId,
                     properties.knowledgeSearch().retriever(), toolResult.items().size(), durationMs);
+            metrics.agentToolCompleted(metricSample, "native", "knowledge_search", "success");
             return toolResult;
         } catch (ContextBudgetExceededException budgetExceeded) {
+            metrics.agentToolCompleted(metricSample, "native", "knowledge_search", "error");
             throw budgetExceeded;
         } catch (RuntimeException error) {
+            metrics.agentToolCompleted(metricSample, "native", "knowledge_search", "error");
             runContext.publish(AgentStreamEvent.toolError(
                     runContext.runId(), runContext.sessionId(), invocationId, TOOL_NAME,
                     "KNOWLEDGE_SEARCH_FAILED", "知识库搜索失败，请稍后重试"));
@@ -99,7 +114,7 @@ public final class KnowledgeSearchTool {
                             + "durationMs={}, errorType={}",
                     runContext.runId(), TOOL_NAME, knowledgeBaseId,
                     properties.knowledgeSearch().retriever(), elapsedMillis(startedAt),
-                    error.getClass().getSimpleName(), error);
+                    error.getClass().getSimpleName());
             throw error;
         }
     }

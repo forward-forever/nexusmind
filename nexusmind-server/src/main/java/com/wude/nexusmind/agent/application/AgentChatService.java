@@ -5,6 +5,7 @@ import com.wude.nexusmind.agent.memory.AgentConversationMemoryService;
 import com.wude.nexusmind.agent.memory.AgentSessionBusyException;
 import com.wude.nexusmind.agent.memory.AgentSessionConcurrencyService;
 import com.wude.nexusmind.agent.memory.AgentSessionLeaseLostException;
+import com.wude.nexusmind.agent.memory.domain.AgentSessionType;
 import com.wude.nexusmind.agent.mcp.McpToolExecutionException;
 import com.wude.nexusmind.agent.prompt.AgentPromptFactory;
 import com.wude.nexusmind.agent.stream.AgentStreamEvent;
@@ -20,6 +21,8 @@ import com.wude.nexusmind.rag.exception.KnowledgeBaseInactiveException;
 import com.wude.nexusmind.resilience.ProviderStreamingRetry;
 import com.wude.nexusmind.context.ContextBudgetExceededException;
 import com.wude.nexusmind.context.TokenBudgetCalculator;
+import com.wude.nexusmind.observability.NexusMindMetrics;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClientMessageAggregator;
@@ -45,6 +48,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeoutException;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -68,6 +72,8 @@ public class AgentChatService {
     private final Clock clock;
     private final ProviderStreamingRetry streamingRetry;
     private final TokenBudgetCalculator tokenBudgetCalculator;
+    private final AgentCitationValidator citationValidator;
+    private final NexusMindMetrics metrics;
 
     @Autowired
     public AgentChatService(KnowledgeBaseService knowledgeBaseService,
@@ -81,7 +87,9 @@ public class AgentChatService {
                             RagChatProperties chatProperties,
                             Clock clock,
                             ProviderStreamingRetry streamingRetry,
-                            TokenBudgetCalculator tokenBudgetCalculator) {
+                            TokenBudgetCalculator tokenBudgetCalculator,
+                            AgentCitationValidator citationValidator,
+                            NexusMindMetrics metrics) {
         this.knowledgeBaseService = knowledgeBaseService;
         this.modelTurnStreamer = modelTurnStreamer;
         this.toolCallingManager = toolCallingManager;
@@ -94,6 +102,26 @@ public class AgentChatService {
         this.clock = clock;
         this.streamingRetry = streamingRetry;
         this.tokenBudgetCalculator = tokenBudgetCalculator;
+        this.citationValidator = citationValidator;
+        this.metrics = metrics;
+    }
+
+    public AgentChatService(KnowledgeBaseService knowledgeBaseService,
+                            AgentModelTurnStreamer modelTurnStreamer,
+                            ToolCallingManager toolCallingManager,
+                            AgentToolCatalog toolCatalog,
+                            AgentPromptFactory promptFactory,
+                            AgentConversationMemoryService memoryService,
+                            AgentSessionConcurrencyService sessionConcurrencyService,
+                            AgentProperties properties,
+                            RagChatProperties chatProperties,
+                            Clock clock,
+                            ProviderStreamingRetry streamingRetry,
+                            TokenBudgetCalculator tokenBudgetCalculator) {
+        this(knowledgeBaseService, modelTurnStreamer, toolCallingManager, toolCatalog,
+                promptFactory, memoryService, sessionConcurrencyService, properties,
+                chatProperties, clock, streamingRetry, tokenBudgetCalculator,
+                new AgentCitationValidator(), NexusMindMetrics.noop());
     }
 
     public AgentChatService(KnowledgeBaseService knowledgeBaseService,
@@ -111,7 +139,8 @@ public class AgentChatService {
         this(knowledgeBaseService, modelTurnStreamer, toolCallingManager,
                 AgentToolCatalog.nativeOnly(toolSet), promptFactory, memoryService,
                 sessionConcurrencyService, properties, chatProperties, clock,
-                streamingRetry, tokenBudgetCalculator);
+                streamingRetry, tokenBudgetCalculator, new AgentCitationValidator(),
+                NexusMindMetrics.noop());
     }
 
     public Flux<AgentStreamEvent> chat(long knowledgeBaseId, String message) {
@@ -121,17 +150,36 @@ public class AgentChatService {
     public Flux<AgentStreamEvent> chat(long knowledgeBaseId,
                                        String requestedSessionId,
                                        String message) {
+        return chat(knowledgeBaseId, requestedSessionId, message, AgentSessionType.NORMAL);
+    }
+
+    public Flux<AgentStreamEvent> chatForEvaluation(long knowledgeBaseId,
+                                                    String requestedSessionId,
+                                                    String message) {
+        return chat(knowledgeBaseId, requestedSessionId, message, AgentSessionType.EVALUATION);
+    }
+
+    private Flux<AgentStreamEvent> chat(long knowledgeBaseId,
+                                        String requestedSessionId,
+                                        String message,
+                                        AgentSessionType sessionType) {
         String normalizedMessage = requireMessage(message);
         validateKnowledgeBase(knowledgeBaseId);
         String runId = UUID.randomUUID().toString();
 
         return Flux.defer(() -> {
+            Timer.Sample runSample = metrics.start();
             String sessionId;
             try {
-                sessionId = sessionConcurrencyService.acquire(
-                        knowledgeBaseId, requestedSessionId, runId,
-                        properties.sessionConcurrency().leaseDuration());
+                sessionId = sessionType == AgentSessionType.NORMAL
+                        ? sessionConcurrencyService.acquire(
+                                knowledgeBaseId, requestedSessionId, runId,
+                                properties.sessionConcurrency().leaseDuration())
+                        : sessionConcurrencyService.acquire(
+                                knowledgeBaseId, requestedSessionId, runId,
+                                properties.sessionConcurrency().leaseDuration(), sessionType);
             } catch (AgentSessionBusyException busy) {
+                metrics.agentCompleted(runSample, "session_busy");
                 AgentExecutionException failure = AgentExecutionException.sessionBusy();
                 return Flux.just(AgentStreamEvent.error(
                         runId, busy.sessionId(), failure.code(), failure.clientMessage()));
@@ -145,6 +193,8 @@ public class AgentChatService {
                         sessionId, properties.memory().maxMessages(), memoryBudget);
             } catch (ContextBudgetExceededException exceeded) {
                 sessionConcurrencyService.release(sessionId, runId);
+                metrics.contextBudgetExceeded("agent");
+                metrics.agentCompleted(runSample, "context_budget_exceeded");
                 AgentExecutionException failure = AgentExecutionException.contextBudget(exceeded);
                 return Flux.just(AgentStreamEvent.error(
                         runId, sessionId, failure.code(), failure.clientMessage()));
@@ -172,8 +222,8 @@ public class AgentChatService {
             ToolCallingChatOptions options = optionsBuilder.build();
             Prompt prompt = new Prompt(promptFactory.create(history, normalizedMessage), options);
 
-            Mono<Void> execution = runLoop(runContext, prompt, normalizedMessage)
-                    .onErrorResume(error -> finishWithError(runContext, error))
+            Mono<Void> execution = runLoop(runContext, prompt, normalizedMessage, runSample)
+                    .onErrorResume(error -> finishWithError(runContext, error, runSample))
                     .doFinally(signal -> {
                         sessionConcurrencyService.release(sessionId, runId);
                         complete(eventSink, emissionLock);
@@ -191,7 +241,8 @@ public class AgentChatService {
 
     private Mono<Void> runLoop(AgentRunContext runContext,
                                Prompt prompt,
-                               String currentUserMessage) {
+                               String currentUserMessage,
+                               Timer.Sample runSample) {
         return Mono.defer(() -> {
             runContext.ensureTimeRemaining();
             try {
@@ -200,6 +251,7 @@ public class AgentChatService {
                 throw AgentExecutionException.contextBudget(exceeded);
             }
             int turn = runContext.incrementModelTurn();
+            metrics.agentModelTurn();
             long turnStarted = System.nanoTime();
             return streamModelTurn(runContext, prompt)
                     .flatMap(response -> {
@@ -217,7 +269,7 @@ public class AgentChatService {
                         if (toolCalls.isEmpty()) {
                             String finalAssistantContent = requireFinalAssistantContent(response);
                             return persistSuccessfulTurn(
-                                    runContext, currentUserMessage, finalAssistantContent);
+                                    runContext, currentUserMessage, finalAssistantContent, runSample);
                         }
 
                         runContext.reserveToolCalls(toolCalls.size(), properties.maxToolCalls());
@@ -227,7 +279,7 @@ public class AgentChatService {
                                     runContext.ensureTimeRemaining();
                                     Prompt nextPrompt = new Prompt(
                                             result.conversationHistory(), prompt.getOptions());
-                                    return runLoop(runContext, nextPrompt, currentUserMessage);
+                                    return runLoop(runContext, nextPrompt, currentUserMessage, runSample);
                                 });
                     });
         });
@@ -235,7 +287,15 @@ public class AgentChatService {
 
     private Mono<Void> persistSuccessfulTurn(AgentRunContext runContext,
                                              String userContent,
-                                             String assistantContent) {
+                                             String assistantContent,
+                                             Timer.Sample runSample) {
+        Set<String> invalidCitations = citationValidator.invalidCitations(
+                assistantContent, runContext.sourceRegistry());
+        if (!invalidCitations.isEmpty()) {
+            metrics.invalidCitations(invalidCitations.size());
+            log.warn("Agent answer contains invalid run-scoped citations: runId={}, invalidCitationCount={}",
+                    runContext.runId(), invalidCitations.size());
+        }
         Duration remaining = runContext.remaining();
         return Mono.fromRunnable(() -> memoryService.appendSuccessfulTurn(
                         runContext.sessionId(), runContext.runId(), userContent, assistantContent))
@@ -244,10 +304,17 @@ public class AgentChatService {
                 .onErrorMap(TimeoutException.class, ignored -> AgentExecutionException.timeout())
                 .onErrorMap(AgentSessionLeaseLostException.class,
                         AgentExecutionException::leaseLost)
-                .then(Mono.fromRunnable(() -> runContext.publish(AgentStreamEvent.done(
-                        runContext.runId(), runContext.sessionId(), runContext.toolCallCount(),
-                        runContext.modelTurnCount(), runContext.elapsedMillis(),
-                        runContext.sourceRegistry().snapshot()))));
+                .then(Mono.fromRunnable(() -> {
+                    metrics.agentCompleted(runSample, "success");
+                    log.info("Agent run completed: runId={}, sessionId={}, modelTurns={}, toolCalls={}, "
+                                    + "durationMs={}, outcome=success",
+                            runContext.runId(), runContext.sessionId(), runContext.modelTurnCount(),
+                            runContext.toolCallCount(), runContext.elapsedMillis());
+                    runContext.publish(AgentStreamEvent.done(
+                            runContext.runId(), runContext.sessionId(), runContext.toolCallCount(),
+                            runContext.modelTurnCount(), runContext.elapsedMillis(),
+                            runContext.sourceRegistry().snapshot()));
+                }));
     }
 
     private Mono<ChatResponse> streamModelTurn(AgentRunContext runContext, Prompt prompt) {
@@ -295,13 +362,19 @@ public class AgentChatService {
                 .onErrorMap(this::mapToolError);
     }
 
-    private Mono<Void> finishWithError(AgentRunContext runContext, Throwable error) {
+    private Mono<Void> finishWithError(AgentRunContext runContext,
+                                       Throwable error,
+                                       Timer.Sample runSample) {
         AgentExecutionException failure = toAgentFailure(error);
+        metrics.agentCompleted(runSample, failure.code().toLowerCase(java.util.Locale.ROOT));
+        if ("AGENT_CONTEXT_BUDGET_EXCEEDED".equals(failure.code())) {
+            metrics.contextBudgetExceeded("agent");
+        }
         log.error("Agent run failed: runId={}, sessionId={}, knowledgeBaseId={}, model={}, modelTurns={}, "
-                        + "toolCalls={}, durationMs={}, code={}, errorType={}",
+                        + "toolCalls={}, durationMs={}, outcome=error, code={}, errorType={}",
                 runContext.runId(), runContext.sessionId(), runContext.knowledgeBaseId(), chatProperties.model(),
                 runContext.modelTurnCount(), runContext.toolCallCount(), runContext.elapsedMillis(),
-                failure.code(), error.getClass().getSimpleName(), error);
+                failure.code(), error.getClass().getSimpleName());
         runContext.publish(AgentStreamEvent.error(
                 runContext.runId(), runContext.sessionId(), failure.code(), failure.clientMessage()));
         return Mono.empty();

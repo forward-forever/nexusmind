@@ -7,9 +7,15 @@ import com.wude.nexusmind.knowledge.exception.DocumentNotFoundException;
 import com.wude.nexusmind.knowledge.exception.InvalidDocumentIndexStateException;
 import com.wude.nexusmind.knowledge.exception.InvalidDocumentStateException;
 import com.wude.nexusmind.knowledge.mapper.KnowledgeDocumentMapper;
+import com.wude.nexusmind.knowledge.task.domain.DocumentTaskStatus;
+import com.wude.nexusmind.knowledge.task.domain.DocumentTaskType;
+import com.wude.nexusmind.knowledge.task.infrastructure.persistence.DocumentTaskMapper;
+import com.wude.nexusmind.knowledge.task.infrastructure.persistence.KnowledgeDocumentTask;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.wude.nexusmind.observability.NexusMindMetrics;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -28,15 +34,26 @@ public class DocumentTaskService {
     private final KnowledgeDocumentMapper documentMapper;
     private final DocumentTaskProperties properties;
     private final Clock clock;
+    private final NexusMindMetrics metrics;
 
     public DocumentTaskService(DocumentTaskMapper taskMapper,
                                KnowledgeDocumentMapper documentMapper,
                                DocumentTaskProperties properties,
                                Clock clock) {
+        this(taskMapper, documentMapper, properties, clock, NexusMindMetrics.noop());
+    }
+
+    @Autowired
+    public DocumentTaskService(DocumentTaskMapper taskMapper,
+                               KnowledgeDocumentMapper documentMapper,
+                               DocumentTaskProperties properties,
+                               Clock clock,
+                               NexusMindMetrics metrics) {
         this.taskMapper = taskMapper;
         this.documentMapper = documentMapper;
         this.properties = properties;
         this.clock = clock;
+        this.metrics = metrics;
     }
 
     @Transactional
@@ -147,9 +164,13 @@ public class DocumentTaskService {
         if (!Objects.equals(task.getDocumentId(), document.getId())) {
             return RecoveryOutcome.UNCHANGED;
         }
-        return task.getTaskType() == DocumentTaskType.PROCESS
+        RecoveryOutcome outcome = task.getTaskType() == DocumentTaskType.PROCESS
                 ? reconcileProcess(task, document)
                 : reconcileIndex(task, document);
+        if (outcome != RecoveryOutcome.UNCHANGED) {
+            metrics.documentTaskRecovered(task.getTaskType().name(), outcome.name());
+        }
+        return outcome;
     }
 
     @Transactional
@@ -162,6 +183,7 @@ public class DocumentTaskService {
         documentMapper.updateStatus(documentId, DocumentStatus.UPLOADED,
                 document.getChunkCount() == null ? 0 : document.getChunkCount(), null);
         enqueueRecoveredOrphan(document, DocumentTaskType.PROCESS, existing);
+        metrics.documentTaskRecovered(DocumentTaskType.PROCESS.name(), "ORPHAN_REQUEUED");
         return true;
     }
 
@@ -174,6 +196,7 @@ public class DocumentTaskService {
         if (existing.filter(value -> value.getStatus().active()).isPresent()) return false;
         documentMapper.updateIndexStatus(documentId, DocumentIndexStatus.NOT_INDEXED, null);
         enqueueRecoveredOrphan(document, DocumentTaskType.INDEX, existing);
+        metrics.documentTaskRecovered(DocumentTaskType.INDEX.name(), "ORPHAN_REQUEUED");
         return true;
     }
 
@@ -191,6 +214,7 @@ public class DocumentTaskService {
             taskMapper.requeue(existing.get().getId(), now(), true);
             task = requiredTask(existing.get().getId());
         }
+        metrics.documentTaskEnqueued(type.name());
         return new DocumentTaskEnqueueResult(task, true);
     }
 

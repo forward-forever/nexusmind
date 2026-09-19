@@ -1,8 +1,8 @@
 package com.wude.nexusmind.knowledge.api;
 
-import com.wude.nexusmind.knowledge.task.DocumentTaskStatus;
-import com.wude.nexusmind.knowledge.task.DocumentTaskType;
-import com.wude.nexusmind.knowledge.task.KnowledgeDocumentTask;
+import com.wude.nexusmind.knowledge.task.domain.DocumentTaskStatus;
+import com.wude.nexusmind.knowledge.task.domain.DocumentTaskType;
+import com.wude.nexusmind.knowledge.task.infrastructure.persistence.KnowledgeDocumentTask;
 
 import java.time.LocalDateTime;
 

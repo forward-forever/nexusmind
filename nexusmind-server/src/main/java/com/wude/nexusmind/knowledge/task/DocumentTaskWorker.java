@@ -2,6 +2,8 @@ package com.wude.nexusmind.knowledge.task;
 
 import com.wude.nexusmind.knowledge.service.DocumentProcessingService;
 import com.wude.nexusmind.rag.index.DocumentIndexingService;
+import com.wude.nexusmind.knowledge.task.domain.DocumentTaskType;
+import com.wude.nexusmind.knowledge.task.infrastructure.persistence.KnowledgeDocumentTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -9,6 +11,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.wude.nexusmind.observability.NexusMindMetrics;
+import io.micrometer.core.instrument.Timer;
 
 import java.util.Map;
 import java.util.Optional;
@@ -30,6 +35,7 @@ public class DocumentTaskWorker {
     private final ThreadPoolTaskExecutor executor;
     // 实例Id
     private final String workerId;
+    private final NexusMindMetrics metrics;
     // DB就是队列，线程池队列容量为0，所以这里用一个AtomicInteger来记录正在执行的任务数
     private final AtomicInteger inFlight = new AtomicInteger();
     private final Map<Long, Ownership> running = new ConcurrentHashMap<>();
@@ -40,12 +46,25 @@ public class DocumentTaskWorker {
                               DocumentTaskProperties properties,
                               @Qualifier("documentTaskExecutor") ThreadPoolTaskExecutor executor,
                               @Qualifier("documentTaskWorkerId") String workerId) {
+        this(taskService, processingService, indexingService, properties, executor,
+                workerId, NexusMindMetrics.noop());
+    }
+
+    @Autowired
+    public DocumentTaskWorker(DocumentTaskService taskService,
+                              DocumentProcessingService processingService,
+                              DocumentIndexingService indexingService,
+                              DocumentTaskProperties properties,
+                              @Qualifier("documentTaskExecutor") ThreadPoolTaskExecutor executor,
+                              @Qualifier("documentTaskWorkerId") String workerId,
+                              NexusMindMetrics metrics) {
         this.taskService = taskService;
         this.processingService = processingService;
         this.indexingService = indexingService;
         this.properties = properties;
         this.executor = executor;
         this.workerId = workerId;
+        this.metrics = metrics;
     }
 
     @Scheduled(fixedDelayString = "${nexusmind.document-task.poll-interval:1s}")
@@ -94,6 +113,7 @@ public class DocumentTaskWorker {
 
     private void execute(KnowledgeDocumentTask task) {
         long started = System.nanoTime();
+        Timer.Sample metricSample = metrics.start();
         Ownership ownership = new Ownership(task.getId(), task.getRunToken());
         running.put(task.getId(), ownership);
         log.info("Document task started: taskId={}, documentId={}, taskType={}, attempt={}, workerId={}",
@@ -105,19 +125,22 @@ public class DocumentTaskWorker {
                 indexingService.index(task.getDocumentId());
             }
             if (taskService.markSucceeded(task.getId(), task.getRunToken())) {
-                log.info("Document task succeeded: taskId={}, documentId={}, taskType={}, attempt={}, durationMs={}, workerId={}",
+                metrics.documentTaskCompleted(metricSample, task.getTaskType().name(), "success");
+                log.info("Document task succeeded: taskId={}, documentId={}, taskType={}, attempt={}, durationMs={}, workerId={}, outcome=success",
                         task.getId(), task.getDocumentId(), task.getTaskType(), task.getAttemptCount(),
                         elapsedMillis(started), workerId);
             } else {
+                metrics.documentTaskCompleted(metricSample, task.getTaskType().name(), "ownership_lost");
                 log.warn("Document task success ignored after ownership changed: taskId={}, runToken={}",
                         task.getId(), abbreviate(task.getRunToken()));
             }
         } catch (RuntimeException failure) {
             String safeError = task.getTaskType() + " failed (" + failure.getClass().getSimpleName() + ")";
             boolean updated = taskService.markFailed(task.getId(), task.getRunToken(), safeError);
-            log.error("Document task failed: taskId={}, documentId={}, taskType={}, attempt={}, durationMs={}, workerId={}, owned={}",
+            metrics.documentTaskCompleted(metricSample, task.getTaskType().name(), "error");
+            log.error("Document task failed: taskId={}, documentId={}, taskType={}, attempt={}, durationMs={}, workerId={}, owned={}, outcome=error, errorType={}",
                     task.getId(), task.getDocumentId(), task.getTaskType(), task.getAttemptCount(),
-                    elapsedMillis(started), workerId, updated, failure);
+                    elapsedMillis(started), workerId, updated, failure.getClass().getSimpleName());
         } finally {
             running.remove(task.getId(), ownership);
             inFlight.decrementAndGet();

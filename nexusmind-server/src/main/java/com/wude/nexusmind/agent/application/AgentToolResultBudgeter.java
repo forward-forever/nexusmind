@@ -14,6 +14,7 @@ import com.wude.nexusmind.context.TokenTextTruncator;
 import com.wude.nexusmind.knowledge.domain.KnowledgeChunk;
 import com.wude.nexusmind.knowledge.domain.KnowledgeDocument;
 import com.wude.nexusmind.rag.retrieval.RetrievalHit;
+import com.wude.nexusmind.observability.NexusMindMetrics;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -27,28 +28,42 @@ public final class AgentToolResultBudgeter {
     private final NexusTokenEstimator estimator;
     private final TokenTextTruncator truncator;
     private final AgentProperties properties;
+    private final NexusMindMetrics metrics;
 
     public AgentToolResultBudgeter(ObjectMapper objectMapper,
                                    NexusTokenEstimator estimator,
                                    TokenTextTruncator truncator,
                                    AgentProperties properties) {
+        this(objectMapper, estimator, truncator, properties, NexusMindMetrics.noop());
+    }
+
+    public AgentToolResultBudgeter(ObjectMapper objectMapper,
+                                   NexusTokenEstimator estimator,
+                                   TokenTextTruncator truncator,
+                                   AgentProperties properties,
+                                   NexusMindMetrics metrics) {
         this.objectMapper = objectMapper;
         this.estimator = estimator;
         this.truncator = truncator;
         this.properties = properties;
+        this.metrics = metrics;
     }
 
     public KnowledgeSearchToolResult budgetSearch(AgentRunContext runContext,
                                                    String query,
                                                    List<RetrievalHit> rankedHits) {
-        return runContext.tokenBudget().allocate(
+        KnowledgeSearchToolResult result = runContext.tokenBudget().allocate(
                 properties.toolResult().maxTokensPerCall(),
                 allowed -> planSearch(runContext, query, rankedHits, allowed));
+        if (result.truncated()) {
+            metrics.contextTruncated("tool");
+        }
+        return result;
     }
 
     public DocumentContextToolResult budgetEmptyContext(AgentRunContext runContext,
                                                          DocumentContextToolResult result) {
-        return runContext.tokenBudget().allocate(
+        DocumentContextToolResult budgeted = runContext.tokenBudget().allocate(
                 properties.toolResult().maxTokensPerCall(),
                 allowed -> {
                     DocumentContextToolResult finalized = finalizeContext(
@@ -61,6 +76,10 @@ public final class AgentToolResultBudgeter {
                     }
                     return new AgentRunTokenBudget.BudgetedValue<>(finalized, estimated);
                 });
+        if (budgeted.truncated()) {
+            metrics.contextTruncated("tool");
+        }
+        return budgeted;
     }
 
     public DocumentContextToolResult budgetDocumentContext(AgentRunContext runContext,
@@ -68,10 +87,14 @@ public final class AgentToolResultBudgeter {
                                                             KnowledgeDocument document,
                                                             List<KnowledgeChunk> chunks,
                                                             long targetChunkId) {
-        return runContext.tokenBudget().allocate(
+        DocumentContextToolResult result = runContext.tokenBudget().allocate(
                 properties.toolResult().maxTokensPerCall(),
                 allowed -> planContext(
                         runContext, requestedSourceId, document, chunks, targetChunkId, allowed));
+        if (result.truncated()) {
+            metrics.contextTruncated("tool");
+        }
+        return result;
     }
 
     private AgentRunTokenBudget.BudgetedValue<KnowledgeSearchToolResult> planSearch(

@@ -1,5 +1,7 @@
 package com.wude.nexusmind.resilience;
 
+import com.wude.nexusmind.observability.NexusMindMetrics;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
@@ -17,11 +19,19 @@ public final class ProviderStreamingRetry {
 
     private final AiResilienceProperties properties;
     private final ProviderFailureClassifier classifier;
+    private final NexusMindMetrics metrics;
 
     public ProviderStreamingRetry(AiResilienceProperties properties,
                                   ProviderFailureClassifier classifier) {
+        this(properties, classifier, NexusMindMetrics.noop());
+    }
+
+    public ProviderStreamingRetry(AiResilienceProperties properties,
+                                  ProviderFailureClassifier classifier,
+                                  NexusMindMetrics metrics) {
         this.properties = properties;
         this.classifier = classifier;
+        this.metrics = metrics;
     }
 
     public static ProviderStreamingRetry noRetry() {
@@ -36,7 +46,8 @@ public final class ProviderStreamingRetry {
                                BooleanSupplier observableSideEffect,
                                Supplier<Duration> remaining,
                                Supplier<? extends RuntimeException> deadlineFailure) {
-        return Flux.defer(streamFactory)
+        return Flux.defer(() -> {
+            return measuredAttempt(provider, operation, streamFactory)
                 .retryWhen(Retry.from(signals -> signals.concatMap(signal -> {
                     Throwable failure = signal.failure();
                     long retryNumber = signal.totalRetries() + 1;
@@ -61,8 +72,23 @@ public final class ProviderStreamingRetry {
                                     + "maxAttempts={}, failureCategory={}, httpStatus={}, nextDelayMs={}",
                             provider, operation, retryNumber + 1, properties.maxRetries() + 1,
                             classifier.classify(failure), status, delay.toMillis());
+                    metrics.providerRetry(provider, operation, classifier.metricCategory(failure));
                     return delay.isZero() ? Mono.just(retryNumber) : Mono.delay(delay);
                 })));
+        });
+    }
+
+    private <T> Flux<T> measuredAttempt(String provider,
+                                        String operation,
+                                        Supplier<Flux<T>> streamFactory) {
+        return Flux.defer(() -> {
+            Timer.Sample sample = metrics.start();
+            return Flux.defer(streamFactory)
+                    .doOnComplete(() -> metrics.providerCompleted(
+                            sample, provider, operation, "success"))
+                    .doOnError(error -> metrics.providerCompleted(
+                            sample, provider, operation, "error"));
+        });
     }
 
     private Duration withJitter(Duration delay) {

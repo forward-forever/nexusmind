@@ -1,5 +1,8 @@
 package com.wude.nexusmind.rag.retrieval;
 
+import com.wude.nexusmind.observability.NexusMindMetrics;
+import io.micrometer.core.instrument.Timer;
+
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -16,6 +19,7 @@ public class HybridRrfRetrievalService implements RetrievalService {
     private final ReciprocalRankFusion fusion;
     private final HybridRetrievalProperties properties;
     private final Executor routeExecutor;
+    private final NexusMindMetrics metrics;
 
     public HybridRrfRetrievalService(DenseRetrievalService denseRetrievalService,
                                      Bm25RetrievalService bm25RetrievalService,
@@ -23,7 +27,7 @@ public class HybridRrfRetrievalService implements RetrievalService {
                                      ReciprocalRankFusion fusion,
                                      HybridRetrievalProperties properties) {
         this(denseRetrievalService, bm25RetrievalService, candidatePlanner, fusion,
-                properties, Runnable::run);
+                properties, Runnable::run, NexusMindMetrics.noop());
     }
 
     public HybridRrfRetrievalService(DenseRetrievalService denseRetrievalService,
@@ -32,12 +36,24 @@ public class HybridRrfRetrievalService implements RetrievalService {
                                      ReciprocalRankFusion fusion,
                                      HybridRetrievalProperties properties,
                                      Executor routeExecutor) {
+        this(denseRetrievalService, bm25RetrievalService, candidatePlanner, fusion,
+                properties, routeExecutor, NexusMindMetrics.noop());
+    }
+
+    public HybridRrfRetrievalService(DenseRetrievalService denseRetrievalService,
+                                     Bm25RetrievalService bm25RetrievalService,
+                                     HybridRouteCandidatePlanner candidatePlanner,
+                                     ReciprocalRankFusion fusion,
+                                     HybridRetrievalProperties properties,
+                                     Executor routeExecutor,
+                                     NexusMindMetrics metrics) {
         this.denseRetrievalService = denseRetrievalService;
         this.bm25RetrievalService = bm25RetrievalService;
         this.candidatePlanner = candidatePlanner;
         this.fusion = fusion;
         this.properties = properties;
         this.routeExecutor = routeExecutor;
+        this.metrics = metrics;
     }
 
     @Override
@@ -56,10 +72,12 @@ public class HybridRrfRetrievalService implements RetrievalService {
         CompletableFuture<RetrievalResult> bm25Future = null;
         try {
             denseFuture = CompletableFuture.supplyAsync(
-                    () -> denseRetrievalService.retrieve(knowledgeBaseId, query, routeCandidateK),
+                    () -> retrieveRoute("dense", () -> denseRetrievalService.retrieve(
+                            knowledgeBaseId, query, routeCandidateK)),
                     routeExecutor);
             bm25Future = CompletableFuture.supplyAsync(
-                    () -> bm25RetrievalService.retrieve(knowledgeBaseId, query, routeCandidateK),
+                    () -> retrieveRoute("bm25", () -> bm25RetrievalService.retrieve(
+                            knowledgeBaseId, query, routeCandidateK)),
                     routeExecutor);
         } catch (RuntimeException schedulingFailure) {
             if (denseFuture != null) {
@@ -92,6 +110,19 @@ public class HybridRrfRetrievalService implements RetrievalService {
                 RetrievalScoreType.RRF,
                 topK,
                 fused);
+    }
+
+    private RetrievalResult retrieveRoute(String route,
+                                           java.util.function.Supplier<RetrievalResult> action) {
+        Timer.Sample sample = metrics.start();
+        try {
+            RetrievalResult result = action.get();
+            metrics.retrievalRoute(sample, route, "success");
+            return result;
+        } catch (RuntimeException failure) {
+            metrics.retrievalRoute(sample, route, "error");
+            throw failure;
+        }
     }
 
     private static RuntimeException propagate(Throwable failure) {

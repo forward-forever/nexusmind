@@ -125,16 +125,15 @@ Reports are JSON plus Markdown. A non-perfect result is retained as actual model
 
 ## Known Limitations
 
-1. The backend does not coordinate concurrent requests within one Session.
-2. There is no provider retry, fallback, or circuit breaker.
+1. Agent cancellation remains best effort.
+2. There is no provider fallback or circuit breaker.
 3. There is no Session list, title, rename, or delete API/UI.
 4. Browser refresh loses visible UI history; MySQL memory remains.
-5. The Memory window is message-count based, not token-aware.
+5. The local token estimator is conservative but not the exact Qwen tokenizer.
 6. There is no semantic or long-term user memory.
-7. Final citations are prompt-constrained but not Java-side validated.
-8. Browser/model/tool cancellation is best effort.
-9. V3 has exactly two read-only knowledge tools.
-10. Agent behavior evaluation is deliberately small and behavior-only.
-11. Real behavior evaluation uses the normal Agent application path and therefore persists its evaluation conversation sessions in the configured database.
+7. Invalid final citations are observed and warned about, but streaming answers are not rewritten.
+8. V3 has exactly two native read-only knowledge tools; controlled external MCP tools are a V4 integration.
+9. Agent behavior evaluation is deliberately small and behavior-only.
+10. Real behavior evaluation uses the normal Agent application path and persists its conversations; those rows are retained for diagnosis and explicitly identified by `agent_session.session_type = EVALUATION`.
 
-These limitations are recorded for later engineering work; V3 does not pre-implement V4 mechanisms.
+These are explicit product boundaries, not claims that the missing capabilities are already solved.

@@ -1,6 +1,5 @@
-package com.wude.nexusmind.agent.memory.mapper;
+package com.wude.nexusmind.agent.memory.infrastructure.persistence;
 
-import com.wude.nexusmind.agent.memory.domain.AgentMessageEntity;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 

@@ -1,4 +1,6 @@
-package com.wude.nexusmind.agent.memory.domain;
+package com.wude.nexusmind.agent.memory.infrastructure.persistence;
+
+import com.wude.nexusmind.agent.memory.domain.AgentSessionType;
 
 import java.time.LocalDateTime;
 
@@ -6,6 +8,7 @@ public class AgentSessionEntity {
 
     private String sessionId;
     private Long knowledgeBaseId;
+    private AgentSessionType sessionType = AgentSessionType.NORMAL;
     private String activeRunId;
     private LocalDateTime runAcquiredAt;
     private LocalDateTime runLeaseUntil;
@@ -34,6 +37,14 @@ public class AgentSessionEntity {
 
     public void setKnowledgeBaseId(Long knowledgeBaseId) {
         this.knowledgeBaseId = knowledgeBaseId;
+    }
+
+    public AgentSessionType getSessionType() {
+        return sessionType;
+    }
+
+    public void setSessionType(AgentSessionType sessionType) {
+        this.sessionType = sessionType;
     }
 
     public String getActiveRunId() {

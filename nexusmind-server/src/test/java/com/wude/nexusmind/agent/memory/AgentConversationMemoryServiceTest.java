@@ -1,10 +1,10 @@
 package com.wude.nexusmind.agent.memory;
 
-import com.wude.nexusmind.agent.memory.domain.AgentMessageEntity;
 import com.wude.nexusmind.agent.memory.domain.AgentMessageRole;
-import com.wude.nexusmind.agent.memory.domain.AgentSessionEntity;
-import com.wude.nexusmind.agent.memory.mapper.AgentMessageMapper;
-import com.wude.nexusmind.agent.memory.mapper.AgentSessionMapper;
+import com.wude.nexusmind.agent.memory.infrastructure.persistence.AgentMessageEntity;
+import com.wude.nexusmind.agent.memory.infrastructure.persistence.AgentSessionEntity;
+import com.wude.nexusmind.agent.memory.infrastructure.persistence.AgentMessageMapper;
+import com.wude.nexusmind.agent.memory.infrastructure.persistence.AgentSessionMapper;
 import com.wude.nexusmind.support.TestTokenSupport;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;

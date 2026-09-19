@@ -1,4 +1,7 @@
-package com.wude.nexusmind.knowledge.task;
+package com.wude.nexusmind.knowledge.task.infrastructure.persistence;
+
+import com.wude.nexusmind.knowledge.task.domain.DocumentTaskStatus;
+import com.wude.nexusmind.knowledge.task.domain.DocumentTaskType;
 
 import java.time.LocalDateTime;
 

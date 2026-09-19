@@ -18,9 +18,6 @@ import java.util.List;
 @ConditionalOnProperty(name = "spring.ai.model.embedding", havingValue = "openai")
 public class DenseRetrievalService implements RetrievalService {
 
-    public static final int DEFAULT_TOP_K = 5;
-    public static final int MAXIMUM_TOP_K = RetrievalLimits.MAX_ROUTE_CANDIDATES;
-
     private final KnowledgeBaseService knowledgeBaseService;
     private final EmbeddingBatchService embeddingService;
     private final DenseVectorIndex vectorIndex;
@@ -39,10 +36,6 @@ public class DenseRetrievalService implements RetrievalService {
         this.visibilityFilter = visibilityFilter;
     }
 
-    public DenseSearchResult search(long knowledgeBaseId, String query, int topK) {
-        return DenseSearchResult.from(retrieve(knowledgeBaseId, query, topK));
-    }
-
     @Override
     public RetrieverType type() {
         return RetrieverType.DENSE;
@@ -53,8 +46,9 @@ public class DenseRetrievalService implements RetrievalService {
         if (query == null || query.isBlank()) {
             throw new IllegalArgumentException("Search query is required");
         }
-        if (topK < 1 || topK > MAXIMUM_TOP_K) {
-            throw new IllegalArgumentException("topK must be between 1 and " + MAXIMUM_TOP_K);
+        if (topK < 1 || topK > RetrievalLimits.MAX_ROUTE_CANDIDATES) {
+            throw new IllegalArgumentException(
+                    "topK must be between 1 and " + RetrievalLimits.MAX_ROUTE_CANDIDATES);
         }
 
         KnowledgeBase knowledgeBase = knowledgeBaseService.get(knowledgeBaseId);

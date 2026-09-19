@@ -1,6 +1,6 @@
-package com.wude.nexusmind.agent.memory.mapper;
+package com.wude.nexusmind.agent.memory.infrastructure.persistence;
 
-import com.wude.nexusmind.agent.memory.domain.AgentSessionEntity;
+import com.wude.nexusmind.agent.memory.domain.AgentSessionType;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -13,6 +13,7 @@ public interface AgentSessionMapper {
 
     int insertWithLease(@Param("sessionId") String sessionId,
                         @Param("knowledgeBaseId") long knowledgeBaseId,
+                        @Param("sessionType") AgentSessionType sessionType,
                         @Param("runId") String runId,
                         @Param("leaseMicros") long leaseMicros);
 

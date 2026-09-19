@@ -6,7 +6,7 @@ import com.wude.nexusmind.agent.application.AgentChatService;
 import com.wude.nexusmind.agent.application.AgentModelTurnStreamer;
 import com.wude.nexusmind.agent.application.DocumentContextService;
 import com.wude.nexusmind.agent.config.AgentProperties;
-import com.wude.nexusmind.agent.memory.mapper.AgentMessageMapper;
+import com.wude.nexusmind.agent.memory.infrastructure.persistence.AgentMessageMapper;
 import com.wude.nexusmind.agent.prompt.AgentPromptFactory;
 import com.wude.nexusmind.agent.stream.AgentStreamEvent;
 import com.wude.nexusmind.agent.tool.AgentToolSet;
@@ -89,7 +89,7 @@ class AgentConversationMemoryLocalIT {
 
     @Test
     void persistsFirstRunLoadsSecondRunAndKeepsMultiToolTraceOutOfMemory() {
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("5");
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("6");
         QueueModelTurnStreamer streamer = new QueueModelTurnStreamer(List.of(
                 Flux.just(text("我记住了。")),
                 Flux.just(toolCalls(searchCall("call-1", "MVCC Read View"))),

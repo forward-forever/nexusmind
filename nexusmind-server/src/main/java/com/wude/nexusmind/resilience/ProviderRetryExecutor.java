@@ -1,5 +1,7 @@
 package com.wude.nexusmind.resilience;
 
+import com.wude.nexusmind.observability.NexusMindMetrics;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.retry.RetryListener;
@@ -18,11 +20,19 @@ public final class ProviderRetryExecutor {
     private final AiResilienceProperties properties;
     private final ProviderFailureClassifier classifier;
     private final RetryPolicy policy;
+    private final NexusMindMetrics metrics;
 
     public ProviderRetryExecutor(AiResilienceProperties properties,
                                  ProviderFailureClassifier classifier) {
+        this(properties, classifier, NexusMindMetrics.noop());
+    }
+
+    public ProviderRetryExecutor(AiResilienceProperties properties,
+                                 ProviderFailureClassifier classifier,
+                                 NexusMindMetrics metrics) {
         this.properties = properties;
         this.classifier = classifier;
+        this.metrics = metrics;
         this.policy = RetryPolicy.builder()
                 .maxRetries(properties.maxRetries())
                 .delay(properties.initialDelay())
@@ -42,7 +52,19 @@ public final class ProviderRetryExecutor {
     public <T> T execute(String provider, String operation, Supplier<T> action) {
         RetryTemplate template = new RetryTemplate(policy);
         template.setRetryListener(new LoggingRetryListener(provider, operation));
-        return template.invoke(action);
+        return template.invoke(() -> measuredAttempt(provider, operation, action));
+    }
+
+    private <T> T measuredAttempt(String provider, String operation, Supplier<T> action) {
+        Timer.Sample sample = metrics.start();
+        try {
+            T result = action.get();
+            metrics.providerCompleted(sample, provider, operation, "success");
+            return result;
+        } catch (RuntimeException failure) {
+            metrics.providerCompleted(sample, provider, operation, "error");
+            throw failure;
+        }
     }
 
     public AiResilienceProperties properties() {
@@ -76,6 +98,7 @@ public final class ProviderRetryExecutor {
                     provider, operation, retryNumber + 1, properties.maxRetries() + 1,
                     classifier.classify(failure), status,
                     properties.delayForRetry(retryNumber).toMillis());
+            metrics.providerRetry(provider, operation, classifier.metricCategory(failure));
         }
     }
 }

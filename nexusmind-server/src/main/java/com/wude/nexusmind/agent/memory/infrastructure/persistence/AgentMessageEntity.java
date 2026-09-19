@@ -1,4 +1,6 @@
-package com.wude.nexusmind.agent.memory.domain;
+package com.wude.nexusmind.agent.memory.infrastructure.persistence;
+
+import com.wude.nexusmind.agent.memory.domain.AgentMessageRole;
 
 import java.time.LocalDateTime;
 

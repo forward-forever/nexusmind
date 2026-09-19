@@ -12,6 +12,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import tools.jackson.databind.ObjectMapper;
+import com.wude.nexusmind.observability.NexusMindMetrics;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(McpProperties.class)
@@ -28,8 +29,9 @@ public class McpConfiguration {
     McpToolResultBudgeter mcpToolResultBudgeter(ObjectMapper objectMapper,
                                                  NexusTokenEstimator estimator,
                                                  TokenTextTruncator truncator,
-                                                 AgentProperties agentProperties) {
-        return new McpToolResultBudgeter(objectMapper, estimator, truncator, agentProperties);
+                                                 AgentProperties agentProperties,
+                                                 NexusMindMetrics metrics) {
+        return new McpToolResultBudgeter(objectMapper, estimator, truncator, agentProperties, metrics);
     }
 
     @Bean

@@ -1,113 +1,119 @@
 # NexusMind
 
-NexusMind 是一个个人 AI 应用项目，定位为 **AI Knowledge & Agent Platform**。
+**Production-Oriented Java AI Knowledge & Agent Platform**
 
-## 项目目标
+NexusMind 是一个面向工程实践的私有知识库、检索增强生成与 Agent 平台。项目保留固定 RAG 与 Agent 两条独立路径，重点展示检索质量、可控工具调用、持久化任务、并发与上下文治理，以及可观测性边界；它不宣称已经具备完整生产基础设施。
 
-项目将围绕私有知识库、检索增强生成（RAG）、Agent 与工程化能力逐步演进，最终用于简历展示、技术面试和现场演示。
+## Features
 
-## 当前阶段
+- PDF、Markdown、UTF-8 TXT 上传、解析、分块与引用
+- MySQL 业务事实源与 Milvus 派生检索索引
+- DENSE、BM25、Application RRF、Cross-Encoder Rerank
+- Golden Dataset、HitRate / Recall / MRR 与 Retrieval Lab
+- SSE Streaming RAG 与可配置 Retriever
+- qwen3.5-flash 原生 Function Calling 与用户控制 Tool Loop
+- Knowledge Search、Document Context 与受控 Remote MCP Tools
+- Multi-step Tool Chaining、Conversation Memory 与 Session Lease
+- MySQL Durable Document Tasks、Crash Recovery 与幂等 Process / Index
+- Provider bounded retry、parallel hybrid retrieval 与 token budgets
+- Actuator Health、Micrometer / Prometheus metrics 与低基数标签策略
+- Vue 3 Tabbed Workbench：Knowledge、Agent Chat、RAG Chat、Retrieval Lab
 
-V1 Basic RAG、V2 Retrieval Quality 与 V3 Agent 均已完成并冻结；V4 Production Engineering 正在进行：
-
-```text
-Document Upload → Local Storage → Parser → Sliding Window Chunk → MySQL
-MySQL Chunk → Dense / BM25 → Application RRF → Cross-Encoder Rerank
-Question → Configured RetrievalService → Context → qwen3.5-flash → SSE Answer + Citation
-Browser → Knowledge Base → Upload → Process → Index → RAG + Retrieval Lab
-Agent → qwen3.5-flash tool decision → KnowledgeSearchTool / DocumentContextTool
-      / allowlisted Remote MCP Tools → Multi-step tool loop → Conversation Memory
-      → final answer + Tool Trace
-HTTP Process / Index → MySQL Durable Task → Background Worker → Recovery
-```
-
-支持 PDF、Markdown 和 UTF-8 TXT。Web 端是一个 tabbed NexusMind Workbench：`Knowledge` 管理 Knowledge Base 与文档，`Agent Chat` 展示 Tool Calling 与跨轮 Session，`RAG Chat` 保留固定 RAG，`Retrieval Lab` 并排检查 DENSE、BM25、HYBRID_RRF、HYBRID_RERANK 的单 Query 结果与 provenance。
-
-V1 的完整启动和人工验收步骤见 [`docs/v1-demo.md`](docs/v1-demo.md)，V2 正式实验结论见 [`docs/v2-retrieval-quality.md`](docs/v2-retrieval-quality.md)。
-V3 的完整架构、Guardrails、Behavior Evaluation 与限制见 [`docs/v3-agent.md`](docs/v3-agent.md)。
-V4 异步文档任务的状态机、幂等与恢复设计见 [`docs/async-document-tasks.md`](docs/async-document-tasks.md)。
-V4 Provider 重试、Hybrid 并行与 Agent Session Lease 设计见 [`docs/resilience-concurrency.md`](docs/resilience-concurrency.md)。
-V4 Token Budget、RAG Context、Agent Memory 与 Tool Result 管理见 [`docs/token-context-management.md`](docs/token-context-management.md)。
-V4 受控 Streamable HTTP MCP Client、Allowlist 与 Trust Boundary 见 [`docs/mcp-client-integration.md`](docs/mcp-client-integration.md)。
-
-## Retrieval Architecture
+## Architecture
 
 ```text
-                        ┌→ Dense ────┐
-Query ──────────────────┤            ├→ RRF → TopN → Rerank
-                        └→ BM25 ─────┘
-                                      │
-                                      ↓
-                                 Final TopK
-                                      │
-                                      ↓
-                                RAG Context
-                                      │
-                                      ↓
-                                   ChatModel
+Vue Workbench
+      │
+Spring Boot API / SSE
+      │
+      ├── Knowledge ── Durable Tasks ── Parse / Chunk ── MySQL
+      │                                                   │
+      │                                                   └── Milvus projection
+      ├── Retrieval ── Dense / BM25 ── RRF ── Rerank
+      ├── RAG ── Retrieval ── Token-budgeted Context ── ChatModel
+      └── Agent ── Tool Calling Loop
+                    ├── Native Knowledge Tools
+                    ├── Allowlisted Streamable HTTP MCP Tools
+                    ├── Conversation Memory / Session Lease
+                    └── Token Budget / Guardrails
 ```
 
-当前产品默认路径仍为 `Query → Dense → Context → ChatModel`。其他 Retriever 通过配置、Debug Search API 和 Retrieval Lab 显式使用；当前 Benchmark 没有证明更复杂路径值得成为默认值。
+MySQL 是业务 Source of Truth；Milvus 是可重建的检索投影；Document Task 只协调执行；Agent Session 保存跨请求对话，Agent Run 保存单次请求状态。完整边界、数据所有权与失败模型见 [docs/architecture.md](docs/architecture.md)。
 
-## Agent Architecture
+当前普通 RAG 默认仍使用 `DENSE`。BM25、Hybrid RRF 与 Hybrid Rerank 可通过配置、Search API 和 Retrieval Lab 显式选择。
+
+## Workbench
+
+单页 Vue Workbench 使用四个保留状态的主 Tab：
+
+- **Knowledge**：Knowledge Base、文档上传、异步 Process / Index 与任务状态
+- **Agent Chat**：Streaming、多轮 Session、Tool Trace、Sources 与 MCP Tool 行为
+- **RAG Chat**：固定 Retrieval → Context → Chat 路径
+- **Retrieval Lab**：四种 Retriever 的单 Query 结果、贡献与 provenance 对比
+
+## Demo Scenarios
+
+1. 上传文档，观察 Process / Index 从 `PENDING` 到 `RUNNING`、`SUCCEEDED`。
+2. 在 Retrieval Lab 比较 DENSE、BM25、HYBRID_RRF、HYBRID_RERANK。
+3. Agent 先执行 `search_knowledge_base`，再按需执行 `get_document_context(S1)`。
+4. 配置可信 Streamable HTTP MCP Server，展示模型选择 allowlisted external tool。
+
+## Local Configuration
+
+复制占位模板并只在未跟踪的本地文件中填写凭据：
+
+```bash
+cp deploy/.env.example deploy/.env
+```
+
+主要环境变量名：
 
 ```text
-Document → Parse / Chunk → MySQL + Milvus → Retrieval Layer
-                                              ↓
-                                    Knowledge Tools
-                                              ↓
-User → Agent LLM ↔ Tool Calling Loop → Conversation Memory
-                                              ↓
-                                  SSE Answer + Sources → Web UI
+DB_HOST DB_PORT DB_NAME DB_USERNAME DB_PASSWORD
+DASHSCOPE_API_KEY
+CHAT_BASE_URL EMBEDDING_BASE_URL RERANK_BASE_URL
+MILVUS_URI
+NEXUSMIND_MCP_ENABLED MCP_DEMO_BASE_URL MCP_DEMO_ENDPOINT MCP_ALLOWED_TOOLS
 ```
 
-V1 Fixed RAG 与 V3 Agent 是两个独立入口：前者固定执行 Retrieval → Context → Chat，后者由模型决定是否搜索、是否扩展文档上下文以及何时完成回答。
+不要提交 `deploy/.env`。MCP remote URL、API key、Authorization header 与模型输入内容不应进入版本库或日志。
 
-## 高层架构设想
+## Observability
 
-- `nexusmind-server`：Java 后端服务
-- `nexusmind-web`：Vue 3 单页 Tabbed Workbench（Knowledge、Agent Chat、RAG Chat、Retrieval Lab）
-- `deploy`：MySQL 与 Milvus 本地开发环境
-- `docs`：架构、设计决策与评估文档
+默认仅暴露：
 
-## 技术栈
+```text
+/actuator/health
+/actuator/info
+/actuator/prometheus
+```
 
-- Java 17
-- Maven
-- Spring Boot 4.1.0
-- Spring AI 2.0.1
-- Spring AI MCP Client（Remote Streamable HTTP）
-- Spring MVC
-- MyBatis 4.1.0 / Flyway
-- MySQL 8.4.11 / Milvus 2.6.22
-- Alibaba Cloud Model Studio OpenAI-compatible Embedding
-- Alibaba Cloud Model Studio OpenAI-compatible Chat
-- Alibaba Cloud Model Studio Text Rerank
-- Apache PDFBox 3.0.8
-- Vue 3 / TypeScript / Vite
+所有应用指标使用 `nexusmind.*` 前缀，且不使用 runId、sessionId、documentId、query 或动态 MCP tool name 作为标签。指标清单与 Prometheus 示例见 [docs/observability.md](docs/observability.md)。
+
+## Technology
+
+- Java 17, Spring Boot 4.1.0, Spring AI 2.0.1
+- Spring MVC, MyBatis 4.1.0, Flyway, MySQL 8
+- Milvus 2.6, Alibaba Cloud Model Studio
+- Vue 3, TypeScript, Vite, Vitest
 
 ## Delivery Status
 
-- V1 - Basic RAG ✅
-- V2 - Retrieval Quality ✅
-  - Dense Retrieval
-  - BM25
-  - Hybrid RRF
-  - Cross-Encoder Rerank
-  - Golden Dataset Evaluation
-  - HitRate / Recall / MRR
-  - Retrieval Debug Panel
-- V3 - Agent ✅
-  - Real LLM Function Calling
-  - User-Controlled Tool Loop
-  - KnowledgeSearchTool / DocumentContextTool
-  - Multi-Step Tool Chaining
-  - Conversation Memory
-  - Structured Agent SSE / Tool Trace
-  - Agent Guardrails
-  - Agent Behavior Evaluation
-- V4 - Production Engineering（In Progress）
-  - Durable Async Document Processing / Indexing ✅
-  - Provider Resilience / Parallel Hybrid / Agent Session Concurrency ✅
-  - Token / Context Management ✅
-  - Controlled MCP Client / External Tool Integration ✅
+- V1 Basic RAG ✅
+- V2 Retrieval Quality ✅
+- V3 Agent ✅
+- V4 Production Engineering ✅
+
+V4 完成了 Durable Async Tasks、Provider Resilience、Parallel Hybrid、Agent Session Concurrency、Token / Context Management、Controlled MCP Client 与 Observability。项目在 V4 冻结，不继续规划新功能版本。
+
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [Observability](docs/observability.md)
+- [V1 Demo](docs/v1-demo.md)
+- [V2 Retrieval Quality](docs/v2-retrieval-quality.md)
+- [V3 Agent](docs/v3-agent.md)
+- [Async Document Tasks](docs/async-document-tasks.md)
+- [Resilience and Concurrency](docs/resilience-concurrency.md)
+- [Token and Context Management](docs/token-context-management.md)
+- [Controlled MCP Client](docs/mcp-client-integration.md)

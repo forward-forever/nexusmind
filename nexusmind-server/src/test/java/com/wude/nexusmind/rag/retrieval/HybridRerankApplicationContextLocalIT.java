@@ -45,7 +45,8 @@ class HybridRerankApplicationContextLocalIT {
     @Test
     void registersHybridRerankWithFakeExternalModels() {
         assertThat(registry.get(RetrieverType.HYBRID_RERANK))
-                .isInstanceOf(HybridRerankRetrievalService.class);
+                .extracting(RetrievalService::type)
+                .isEqualTo(RetrieverType.HYBRID_RERANK);
     }
 
     @TestConfiguration(proxyBeanMethods = false)

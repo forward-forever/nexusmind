@@ -13,10 +13,13 @@ import com.wude.nexusmind.rag.retrieval.RagRetrievalProperties;
 import com.wude.nexusmind.rag.retrieval.RetrievalService;
 import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
 import com.wude.nexusmind.resilience.ProviderStreamingRetry;
+import com.wude.nexusmind.observability.NexusMindMetrics;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -43,6 +46,30 @@ public class RagChatService {
     private final ProviderStreamingRetry streamingRetry;
     private final TokenBudgetCalculator tokenBudgetCalculator;
     private final RagContextProperties contextProperties;
+    private final NexusMindMetrics metrics;
+
+    @Autowired
+    public RagChatService(RetrievalServiceRegistry retrievalServiceRegistry,
+                          RagRetrievalProperties retrievalProperties,
+                          RagContextBuilder contextBuilder,
+                          RagPromptFactory promptFactory,
+                          ChatAnswerStreamer chatAnswerStreamer,
+                          RagChatProperties properties,
+                          ProviderStreamingRetry streamingRetry,
+                          TokenBudgetCalculator tokenBudgetCalculator,
+                          RagContextProperties contextProperties,
+                          NexusMindMetrics metrics) {
+        // 默认向量检索服务
+        this.retrievalService = retrievalServiceRegistry.get(retrievalProperties.retriever());
+        this.contextBuilder = contextBuilder;
+        this.promptFactory = promptFactory;
+        this.chatAnswerStreamer = chatAnswerStreamer;
+        this.properties = properties;
+        this.streamingRetry = streamingRetry;
+        this.tokenBudgetCalculator = tokenBudgetCalculator;
+        this.contextProperties = contextProperties;
+        this.metrics = metrics;
+    }
 
     public RagChatService(RetrievalServiceRegistry retrievalServiceRegistry,
                           RagRetrievalProperties retrievalProperties,
@@ -53,28 +80,24 @@ public class RagChatService {
                           ProviderStreamingRetry streamingRetry,
                           TokenBudgetCalculator tokenBudgetCalculator,
                           RagContextProperties contextProperties) {
-        // 默认向量检索服务
-        this.retrievalService = retrievalServiceRegistry.get(retrievalProperties.retriever());
-        this.contextBuilder = contextBuilder;
-        this.promptFactory = promptFactory;
-        this.chatAnswerStreamer = chatAnswerStreamer;
-        this.properties = properties;
-        this.streamingRetry = streamingRetry;
-        this.tokenBudgetCalculator = tokenBudgetCalculator;
-        this.contextProperties = contextProperties;
+        this(retrievalServiceRegistry, retrievalProperties, contextBuilder, promptFactory,
+                chatAnswerStreamer, properties, streamingRetry, tokenBudgetCalculator,
+                contextProperties, NexusMindMetrics.noop());
     }
 
     public Flux<RagStreamEvent> stream(long knowledgeBaseId, String question, Integer requestedTopK) {
         String normalizedQuestion = requireQuestion(question);
         int topK = resolveTopK(requestedTopK);
         long requestStarted = System.nanoTime();
+        Timer.Sample metricSample = metrics.start();
 
         int contextBudgetTokens;
         try {
             contextBudgetTokens = tokenBudgetCalculator.ragContextBudget(
                     promptFactory.fixedMessages(normalizedQuestion), contextProperties.maxTokens());
         } catch (ContextBudgetExceededException exceeded) {
-            return budgetExceededFlow();
+            metrics.contextBudgetExceeded("rag");
+            return instrument(budgetExceededFlow(), metricSample, "context_budget_exceeded");
         }
 
         long retrievalStarted = System.nanoTime();
@@ -84,20 +107,26 @@ public class RagChatService {
         try {
             context = contextBuilder.build(searchResult.hits(), contextBudgetTokens);
         } catch (ContextBudgetExceededException exceeded) {
-            return budgetExceededFlow();
+            metrics.contextBudgetExceeded("rag");
+            return instrument(budgetExceededFlow(), metricSample, "context_budget_exceeded");
+        }
+        if (context.truncated()) {
+            metrics.contextTruncated("rag");
         }
         logRetrieval(knowledgeBaseId, normalizedQuestion, topK, searchResult, context, retrievalLatencyMs);
         // 构建源事件
         RagStreamEvent sourcesEvent = RagStreamEvent.sources(context.sources());
         if (context.sources().isEmpty()) {
-            return noResultsFlow(knowledgeBaseId, sourcesEvent, requestStarted);
+            return instrument(noResultsFlow(knowledgeBaseId, sourcesEvent, requestStarted),
+                    metricSample, "success");
         }
 
         RagPrompt prompt = promptFactory.create(normalizedQuestion, context);
         try {
             tokenBudgetCalculator.validateRagMessages(promptFactory.messages(prompt));
         } catch (ContextBudgetExceededException exceeded) {
-            return budgetExceededFlow();
+            metrics.contextBudgetExceeded("rag");
+            return instrument(budgetExceededFlow(), metricSample, "context_budget_exceeded");
         }
         StringBuilder generatedAnswer = new StringBuilder();
         AtomicBoolean firstTokenSeen = new AtomicBoolean();
@@ -135,8 +164,7 @@ public class RagChatService {
                             context.sources().size(),
                             properties.model(),
                             elapsedMillis(requestStarted),
-                            error.getClass().getSimpleName(),
-                            error);
+                            error.getClass().getSimpleName());
                     return Flux.just(RagStreamEvent.error(
                             "CHAT_MODEL_ERROR", "模型生成失败，请稍后重试"));
                 })
@@ -147,7 +175,7 @@ public class RagChatService {
                         "RAG stream closed: knowledgeBaseId={}, sourceCount={}, model={}, elapsedMs={}",
                         knowledgeBaseId, context.sources().size(), properties.model(), elapsedMillis(requestStarted)));
 
-        return Flux.concat(Flux.just(sourcesEvent), modelFlow);
+        return instrument(Flux.concat(Flux.just(sourcesEvent), modelFlow), metricSample, "success");
     }
 
     private static Flux<RagStreamEvent> budgetExceededFlow() {
@@ -194,17 +222,14 @@ public class RagChatService {
                                      RetrievalResult result,
                                      RagContext context,
                                      long retrievalLatencyMs) {
-        String retrieved = result.hits().stream()
-                .map(hit -> hit.chunkId() + ":" + hit.score())
-                .toList()
-                .toString();
         log.info("RAG retrieval completed: knowledgeBaseId={}, questionChars={}, topK={}, "
-                        + "retrieved={}, contextSources={}, contextChars={}, contextEstimatedTokens={}, "
-                        + "contextTruncated={}, retrievalLatencyMs={}",
+                        + "retriever={}, resultCount={}, contextSources={}, contextChars={}, "
+                        + "contextEstimatedTokens={}, contextTruncated={}, retrievalLatencyMs={}",
                 knowledgeBaseId,
                 question.length(),
                 topK,
-                retrieved,
+                result.retrieverType(),
+                result.hits().size(),
                 context.sources().size(),
                 context.charCount(),
                 context.estimatedTokens(),
@@ -235,5 +260,22 @@ public class RagChatService {
 
     private static long elapsedMillis(long startedAt) {
         return Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
+    }
+
+    private Flux<RagStreamEvent> instrument(Flux<RagStreamEvent> flow,
+                                            Timer.Sample sample,
+                                            String plannedOutcome) {
+        AtomicBoolean recorded = new AtomicBoolean();
+        return flow.doOnNext(event -> {
+            if (("done".equals(event.type()) || "error".equals(event.type()))
+                    && recorded.compareAndSet(false, true)) {
+                String outcome = "error".equals(event.type()) ? "error" : plannedOutcome;
+                metrics.ragCompleted(sample, retrievalService.type().name(), outcome);
+            }
+        }).doOnError(error -> {
+            if (recorded.compareAndSet(false, true)) {
+                metrics.ragCompleted(sample, retrievalService.type().name(), "error");
+            }
+        });
     }
 }

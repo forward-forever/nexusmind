@@ -1,5 +1,9 @@
 package com.wude.nexusmind.knowledge.task;
 
+import com.wude.nexusmind.knowledge.task.domain.DocumentTaskType;
+import com.wude.nexusmind.knowledge.task.domain.DocumentTaskStatus;
+import com.wude.nexusmind.knowledge.task.infrastructure.persistence.KnowledgeDocumentTask;
+
 import com.wude.nexusmind.knowledge.service.DocumentProcessingService;
 import com.wude.nexusmind.rag.index.DocumentIndexingService;
 import org.junit.jupiter.api.AfterEach;

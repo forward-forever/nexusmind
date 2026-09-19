@@ -12,6 +12,7 @@ import com.wude.nexusmind.rag.exception.EmbeddingConfigurationMismatchException;
 import com.wude.nexusmind.rag.exception.EmbeddingGenerationException;
 import com.wude.nexusmind.rag.exception.KnowledgeBaseInactiveException;
 import com.wude.nexusmind.rag.exception.VectorIndexException;
+import com.wude.nexusmind.rag.rerank.RerankClientException;
 import com.wude.nexusmind.knowledge.task.DocumentTaskNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -98,9 +99,19 @@ public class KnowledgeExceptionHandler {
     @ExceptionHandler(EmbeddingGenerationException.class)
     public ResponseEntity<ApiError> embeddingFailure(EmbeddingGenerationException exception,
                                                       HttpServletRequest request) {
-        log.error("Embedding request failed at {}", request.getRequestURI(), exception);
+        log.error("Embedding request failed at {}: errorType={}",
+                request.getRequestURI(), exception.getClass().getSimpleName());
         return response(HttpStatus.BAD_GATEWAY, "EMBEDDING_FAILURE",
                 "Embedding generation failed", request);
+    }
+
+    @ExceptionHandler(RerankClientException.class)
+    public ResponseEntity<ApiError> rerankProviderFailure(RerankClientException exception,
+                                                           HttpServletRequest request) {
+        log.error("Rerank provider request failed at {}: errorType={}",
+                request.getRequestURI(), exception.getClass().getSimpleName());
+        return response(HttpStatus.BAD_GATEWAY, "RERANK_PROVIDER_ERROR",
+                "Rerank provider request failed", request);
     }
 
     @ExceptionHandler(VectorIndexException.class)

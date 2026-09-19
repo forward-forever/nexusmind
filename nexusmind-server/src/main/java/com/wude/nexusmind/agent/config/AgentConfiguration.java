@@ -2,6 +2,7 @@ package com.wude.nexusmind.agent.config;
 
 import tools.jackson.databind.ObjectMapper;
 import com.wude.nexusmind.agent.application.AgentModelTurnStreamer;
+import com.wude.nexusmind.agent.application.AgentCitationValidator;
 import com.wude.nexusmind.agent.application.AgentToolResultBudgeter;
 import com.wude.nexusmind.agent.application.DocumentContextService;
 import com.wude.nexusmind.agent.application.SpringAiAgentModelTurnStreamer;
@@ -18,6 +19,7 @@ import com.wude.nexusmind.rag.retrieval.RetrievalServiceRegistry;
 import com.wude.nexusmind.context.NexusTokenEstimator;
 import com.wude.nexusmind.context.TokenBudgetProperties;
 import com.wude.nexusmind.context.TokenTextTruncator;
+import com.wude.nexusmind.observability.NexusMindMetrics;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.tool.execution.DefaultToolExecutionExceptionProcessor;
@@ -37,8 +39,9 @@ public class AgentConfiguration {
     @ConditionalOnProperty(name = "nexusmind.agent.enabled", havingValue = "true")
     KnowledgeSearchTool knowledgeSearchTool(RetrievalServiceRegistry retrievalServiceRegistry,
                                             AgentProperties properties,
-                                            AgentToolResultBudgeter resultBudgeter) {
-        return new KnowledgeSearchTool(retrievalServiceRegistry, properties, resultBudgeter);
+                                            AgentToolResultBudgeter resultBudgeter,
+                                            NexusMindMetrics metrics) {
+        return new KnowledgeSearchTool(retrievalServiceRegistry, properties, resultBudgeter, metrics);
     }
 
     @Bean
@@ -46,8 +49,9 @@ public class AgentConfiguration {
     AgentToolResultBudgeter agentToolResultBudgeter(ObjectMapper objectMapper,
                                                     NexusTokenEstimator estimator,
                                                     TokenTextTruncator truncator,
-                                                    AgentProperties properties) {
-        return new AgentToolResultBudgeter(objectMapper, estimator, truncator, properties);
+                                                    AgentProperties properties,
+                                                    NexusMindMetrics metrics) {
+        return new AgentToolResultBudgeter(objectMapper, estimator, truncator, properties, metrics);
     }
 
     @Bean
@@ -61,8 +65,9 @@ public class AgentConfiguration {
     @Bean
     @ConditionalOnProperty(name = "nexusmind.agent.enabled", havingValue = "true")
     DocumentContextTool documentContextTool(DocumentContextService contextService,
-                                            AgentProperties properties) {
-        return new DocumentContextTool(contextService, properties);
+                                            AgentProperties properties,
+                                            NexusMindMetrics metrics) {
+        return new DocumentContextTool(contextService, properties, metrics);
     }
 
     @Bean
@@ -103,6 +108,11 @@ public class AgentConfiguration {
     @ConditionalOnProperty(name = "nexusmind.agent.enabled", havingValue = "true")
     AgentPromptFactory agentPromptFactory() {
         return new AgentPromptFactory();
+    }
+
+    @Bean
+    AgentCitationValidator agentCitationValidator() {
+        return new AgentCitationValidator();
     }
 
     @Bean

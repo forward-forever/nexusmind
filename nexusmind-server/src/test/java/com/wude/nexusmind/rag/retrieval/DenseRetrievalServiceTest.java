@@ -1,5 +1,6 @@
 package com.wude.nexusmind.rag.retrieval;
 
+
 import com.wude.nexusmind.knowledge.domain.DocumentIndexStatus;
 import com.wude.nexusmind.knowledge.domain.DocumentStatus;
 import com.wude.nexusmind.knowledge.domain.KnowledgeBase;
@@ -80,11 +81,11 @@ class DenseRetrievalServiceTest {
         when(documents.findByIds(List.of(10L))).thenReturn(List.of(
                 document(10L, 7L, DocumentStatus.READY, DocumentIndexStatus.INDEXED)));
 
-        DenseSearchResult result = service(knowledgeBases, documents, model, index).search(7L, "query", 5);
+        RetrievalResult result = service(knowledgeBases, documents, model, index).retrieve(7L, "query", 5);
 
-        assertThat(result.metric()).isEqualTo("COSINE");
+        assertThat(result.scoreType()).isEqualTo(RetrievalScoreType.COSINE);
         assertThat(result.topK()).isEqualTo(5);
-        assertThat(result.results()).singleElement()
+        assertThat(result.hits()).singleElement()
                 .satisfies(hit -> assertThat(hit.scoreType()).isEqualTo(RetrievalScoreType.COSINE));
     }
 

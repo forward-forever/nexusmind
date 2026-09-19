@@ -6,6 +6,7 @@ import com.wude.nexusmind.agent.config.AgentProperties;
 import com.wude.nexusmind.context.ContextBudgetExceededException;
 import com.wude.nexusmind.context.NexusTokenEstimator;
 import com.wude.nexusmind.context.TokenTextTruncator;
+import com.wude.nexusmind.observability.NexusMindMetrics;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
@@ -18,22 +19,40 @@ public final class McpToolResultBudgeter {
     private final NexusTokenEstimator estimator;
     private final TokenTextTruncator truncator;
     private final AgentProperties agentProperties;
+    private final NexusMindMetrics metrics;
 
     public McpToolResultBudgeter(ObjectMapper objectMapper,
                                  NexusTokenEstimator estimator,
                                  TokenTextTruncator truncator,
                                  AgentProperties agentProperties) {
+        this(objectMapper, estimator, truncator, agentProperties, NexusMindMetrics.noop());
+    }
+
+    public McpToolResultBudgeter(ObjectMapper objectMapper,
+                                 NexusTokenEstimator estimator,
+                                 TokenTextTruncator truncator,
+                                 AgentProperties agentProperties,
+                                 NexusMindMetrics metrics) {
         this.objectMapper = objectMapper;
         this.estimator = estimator;
         this.truncator = truncator;
         this.agentProperties = agentProperties;
+        this.metrics = metrics;
     }
 
     public String budget(AgentRunContext runContext, String rawResult) {
         String value = rawResult == null ? "" : rawResult;
-        return runContext.tokenBudget().allocate(
+        String result = runContext.tokenBudget().allocate(
                 agentProperties.toolResult().maxTokensPerCall(),
                 allowed -> plan(value, allowed));
+        if (!result.equals(value)) {
+            metrics.contextTruncated("tool");
+        }
+        return result;
+    }
+
+    NexusMindMetrics metrics() {
+        return metrics;
     }
 
     private AgentRunTokenBudget.BudgetedValue<String> plan(String rawResult, int allowed) {

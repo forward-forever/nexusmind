@@ -1,7 +1,8 @@
 package com.wude.nexusmind.agent.memory;
 
-import com.wude.nexusmind.agent.memory.domain.AgentSessionEntity;
-import com.wude.nexusmind.agent.memory.mapper.AgentSessionMapper;
+import com.wude.nexusmind.agent.memory.infrastructure.persistence.AgentSessionEntity;
+import com.wude.nexusmind.agent.memory.domain.AgentSessionType;
+import com.wude.nexusmind.agent.memory.infrastructure.persistence.AgentSessionMapper;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -24,13 +25,27 @@ class AgentSessionConcurrencyServiceTest {
     void createsNewSessionAlreadyOwnedByCurrentRun() {
         AgentSessionMapper mapper = mock(AgentSessionMapper.class);
         when(mapper.insertWithLease(org.mockito.ArgumentMatchers.anyString(),
-                eq(33L), eq(RUN), anyLong())).thenReturn(1);
+                eq(33L), eq(AgentSessionType.NORMAL), eq(RUN), anyLong())).thenReturn(1);
 
         String session = new AgentSessionConcurrencyService(mapper)
                 .acquire(33L, null, RUN, Duration.ofSeconds(45));
 
         assertThat(session).hasSize(36);
-        verify(mapper).insertWithLease(eq(session), eq(33L), eq(RUN), eq(45_000_000L));
+        verify(mapper).insertWithLease(eq(session), eq(33L), eq(AgentSessionType.NORMAL),
+                eq(RUN), eq(45_000_000L));
+    }
+
+    @Test
+    void marksNewBehaviorEvaluationSessionExplicitly() {
+        AgentSessionMapper mapper = mock(AgentSessionMapper.class);
+        when(mapper.insertWithLease(org.mockito.ArgumentMatchers.anyString(),
+                eq(33L), eq(AgentSessionType.EVALUATION), eq(RUN), anyLong())).thenReturn(1);
+
+        String session = new AgentSessionConcurrencyService(mapper)
+                .acquire(33L, null, RUN, Duration.ofSeconds(45), AgentSessionType.EVALUATION);
+
+        verify(mapper).insertWithLease(eq(session), eq(33L), eq(AgentSessionType.EVALUATION),
+                eq(RUN), eq(45_000_000L));
     }
 
     @Test

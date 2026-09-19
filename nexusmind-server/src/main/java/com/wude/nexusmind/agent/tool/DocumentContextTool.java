@@ -7,6 +7,8 @@ import com.wude.nexusmind.agent.model.AgentSource;
 import com.wude.nexusmind.agent.model.DocumentContextToolResult;
 import com.wude.nexusmind.agent.stream.AgentStreamEvent;
 import com.wude.nexusmind.context.ContextBudgetExceededException;
+import com.wude.nexusmind.observability.NexusMindMetrics;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.model.ToolContext;
@@ -26,11 +28,19 @@ public final class DocumentContextTool {
 
     private final DocumentContextService contextService;
     private final AgentProperties properties;
+    private final NexusMindMetrics metrics;
 
     public DocumentContextTool(DocumentContextService contextService,
                                AgentProperties properties) {
+        this(contextService, properties, NexusMindMetrics.noop());
+    }
+
+    public DocumentContextTool(DocumentContextService contextService,
+                               AgentProperties properties,
+                               NexusMindMetrics metrics) {
         this.contextService = contextService;
         this.properties = properties;
+        this.metrics = metrics;
     }
 
     @Tool(
@@ -58,6 +68,7 @@ public final class DocumentContextTool {
                 runContext.runId(), runContext.sessionId(), invocationId, TOOL_NAME,
                 Map.of("sourceId", normalizedSourceId)));
         long startedAt = System.nanoTime();
+        Timer.Sample metricSample = metrics.start();
 
         try {
             AgentProperties.DocumentContext policy = properties.documentContext();
@@ -76,17 +87,20 @@ public final class DocumentContextTool {
                             + "resultCount={}, durationMs={}",
                     runContext.runId(), TOOL_NAME, knowledgeBaseId, result.found(),
                     result.items().size(), durationMs);
+            metrics.agentToolCompleted(metricSample, "native", "document_context", "success");
             return result;
         } catch (ContextBudgetExceededException budgetExceeded) {
+            metrics.agentToolCompleted(metricSample, "native", "document_context", "error");
             throw budgetExceeded;
         } catch (RuntimeException error) {
+            metrics.agentToolCompleted(metricSample, "native", "document_context", "error");
             runContext.publish(AgentStreamEvent.toolError(
                     runContext.runId(), runContext.sessionId(), invocationId, TOOL_NAME,
                     "DOCUMENT_CONTEXT_FAILED", "文档上下文加载失败，请稍后重试"));
             log.error("Agent tool failed: runId={}, toolName={}, knowledgeBaseId={}, durationMs={}, "
                             + "errorType={}",
                     runContext.runId(), TOOL_NAME, knowledgeBaseId, elapsedMillis(startedAt),
-                    error.getClass().getSimpleName(), error);
+                    error.getClass().getSimpleName());
             throw error;
         }
     }

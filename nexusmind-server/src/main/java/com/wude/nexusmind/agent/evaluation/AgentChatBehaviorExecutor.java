@@ -25,7 +25,8 @@ public class AgentChatBehaviorExecutor implements AgentBehaviorExecutor {
                                           String message) {
         long startedAt = System.nanoTime();
         try {
-            List<AgentStreamEvent> events = agentChatService.chat(knowledgeBaseId, sessionId, message)
+            List<AgentStreamEvent> events = agentChatService.chatForEvaluation(
+                            knowledgeBaseId, sessionId, message)
                     .collectList()
                     .block(evaluationTimeout);
             if (events == null) {

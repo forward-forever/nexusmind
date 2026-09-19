@@ -1,5 +1,10 @@
 package com.wude.nexusmind.knowledge.task;
 
+import com.wude.nexusmind.knowledge.task.domain.DocumentTaskStatus;
+import com.wude.nexusmind.knowledge.task.domain.DocumentTaskType;
+import com.wude.nexusmind.knowledge.task.infrastructure.persistence.DocumentTaskMapper;
+import com.wude.nexusmind.knowledge.task.infrastructure.persistence.KnowledgeDocumentTask;
+
 import com.wude.nexusmind.knowledge.domain.DocumentIndexStatus;
 import com.wude.nexusmind.knowledge.domain.DocumentStatus;
 import com.wude.nexusmind.knowledge.domain.KnowledgeChunk;
@@ -81,7 +86,7 @@ class DocumentTaskLocalIT {
 
     @Test
     void durableQueueSupportsConcurrentEnqueueClaimFencingRecoveryAndIdempotentProcessing() throws Exception {
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("4");
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("6");
         long knowledgeBaseId = knowledgeBaseService.create("task-it-" + System.nanoTime(), "CP16 LocalIT");
         try {
             long documentId = register(knowledgeBaseId, "enqueue.txt");

@@ -17,7 +17,7 @@ spring:
         streamable-http:
           connections:
             demo:
-              url: ${MCP_DEMO_BASE_URL:https://mcp.api-inference.modelscope.net}
+              url: ${MCP_DEMO_BASE_URL:}
               endpoint: ${MCP_DEMO_ENDPOINT:}
       server:
         enabled: false
@@ -43,7 +43,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
   endpoint:
     health:
       show-details: never

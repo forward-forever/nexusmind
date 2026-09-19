@@ -39,9 +39,9 @@ class Bm25ApplicationContextLocalIT {
 
     @Test
     void registersDenseBm25AndHybridWithoutCallingExternalEmbedding() {
-        assertThat(registry.get(RetrieverType.DENSE)).isInstanceOf(DenseRetrievalService.class);
-        assertThat(registry.get(RetrieverType.BM25)).isInstanceOf(Bm25RetrievalService.class);
-        assertThat(registry.get(RetrieverType.HYBRID_RRF)).isInstanceOf(HybridRrfRetrievalService.class);
+        assertThat(registry.get(RetrieverType.DENSE).type()).isEqualTo(RetrieverType.DENSE);
+        assertThat(registry.get(RetrieverType.BM25).type()).isEqualTo(RetrieverType.BM25);
+        assertThat(registry.get(RetrieverType.HYBRID_RRF).type()).isEqualTo(RetrieverType.HYBRID_RRF);
     }
 
     @TestConfiguration(proxyBeanMethods = false)

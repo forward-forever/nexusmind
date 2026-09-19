@@ -10,6 +10,8 @@ import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
+import com.wude.nexusmind.observability.NexusMindMetrics;
+import io.micrometer.core.instrument.Timer;
 
 import java.time.Duration;
 import java.util.List;
@@ -23,6 +25,7 @@ public final class BudgetedMcpToolCallback implements ToolCallback {
     private final ToolCallback delegate;
     private final McpToolResultBudgeter resultBudgeter;
     private final McpProperties properties;
+    private final NexusMindMetrics metrics;
 
     public BudgetedMcpToolCallback(ToolCallback delegate,
                                    McpToolResultBudgeter resultBudgeter,
@@ -30,6 +33,7 @@ public final class BudgetedMcpToolCallback implements ToolCallback {
         this.delegate = delegate;
         this.resultBudgeter = resultBudgeter;
         this.properties = properties;
+        this.metrics = resultBudgeter.metrics();
     }
 
     @Override
@@ -56,6 +60,8 @@ public final class BudgetedMcpToolCallback implements ToolCallback {
         runContext.publish(AgentStreamEvent.toolStart(
                 runContext.runId(), runContext.sessionId(), invocationId, toolName, Map.of()));
         long startedAt = System.nanoTime();
+        Timer.Sample agentMetricSample = metrics.start();
+        Timer.Sample mcpMetricSample = metrics.start();
         try {
             String rawResult = delegate.call(toolInput, toolContext);
             String result = resultBudgeter.budget(runContext, rawResult);
@@ -65,8 +71,12 @@ public final class BudgetedMcpToolCallback implements ToolCallback {
                     durationMs, result.isBlank() ? 0 : 1, List.of()));
             log.info("MCP agent tool completed: runId={}, toolName={}, durationMs={}",
                     runContext.runId(), toolName, durationMs);
+            metrics.agentToolCompleted(agentMetricSample, "mcp", "mcp", "success");
+            metrics.mcpCompleted(mcpMetricSample, "success");
             return result;
         } catch (ContextBudgetExceededException budgetExceeded) {
+            metrics.agentToolCompleted(agentMetricSample, "mcp", "mcp", "error");
+            metrics.mcpCompleted(mcpMetricSample, "error");
             throw budgetExceeded;
         } catch (RuntimeException error) {
             long durationMs = elapsedMillis(startedAt);
@@ -76,6 +86,8 @@ public final class BudgetedMcpToolCallback implements ToolCallback {
             log.error("MCP agent tool failed: runId={}, toolName={}, durationMs={}, errorType={}",
                     runContext.runId(), toolName, durationMs,
                     error.getClass().getSimpleName());
+            metrics.agentToolCompleted(agentMetricSample, "mcp", "mcp", "error");
+            metrics.mcpCompleted(mcpMetricSample, "error");
             throw new McpToolExecutionException(toolName);
         }
     }

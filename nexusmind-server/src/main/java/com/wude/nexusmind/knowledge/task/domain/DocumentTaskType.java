@@ -1,4 +1,4 @@
-package com.wude.nexusmind.knowledge.task;
+package com.wude.nexusmind.knowledge.task.domain;
 
 public enum DocumentTaskType {
     PROCESS,

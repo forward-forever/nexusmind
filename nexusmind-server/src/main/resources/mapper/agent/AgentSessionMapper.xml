@@ -2,11 +2,12 @@
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.wude.nexusmind.agent.memory.mapper.AgentSessionMapper">
+<mapper namespace="com.wude.nexusmind.agent.memory.infrastructure.persistence.AgentSessionMapper">
 
-    <resultMap id="agentSessionResultMap" type="com.wude.nexusmind.agent.memory.domain.AgentSessionEntity">
+    <resultMap id="agentSessionResultMap" type="com.wude.nexusmind.agent.memory.infrastructure.persistence.AgentSessionEntity">
         <id property="sessionId" column="session_id"/>
         <result property="knowledgeBaseId" column="knowledge_base_id"/>
+        <result property="sessionType" column="session_type"/>
         <result property="activeRunId" column="active_run_id"/>
         <result property="runAcquiredAt" column="run_acquired_at"/>
         <result property="runLeaseUntil" column="run_lease_until"/>
@@ -21,22 +22,22 @@
 
     <insert id="insertWithLease">
         INSERT INTO agent_session (
-            session_id, knowledge_base_id, active_run_id, run_acquired_at, run_lease_until
+            session_id, knowledge_base_id, session_type, active_run_id, run_acquired_at, run_lease_until
         ) VALUES (
-            #{sessionId}, #{knowledgeBaseId}, #{runId}, CURRENT_TIMESTAMP(3),
+            #{sessionId}, #{knowledgeBaseId}, #{sessionType}, #{runId}, CURRENT_TIMESTAMP(3),
             TIMESTAMPADD(MICROSECOND, #{leaseMicros}, CURRENT_TIMESTAMP(3))
         )
     </insert>
 
     <select id="findById" resultMap="agentSessionResultMap">
-        SELECT session_id, knowledge_base_id, active_run_id, run_acquired_at, run_lease_until,
+        SELECT session_id, knowledge_base_id, session_type, active_run_id, run_acquired_at, run_lease_until,
                created_at, updated_at
         FROM agent_session
         WHERE session_id = #{sessionId}
     </select>
 
     <select id="findOwnedByIdForUpdate" resultMap="agentSessionResultMap">
-        SELECT session_id, knowledge_base_id, active_run_id, run_acquired_at, run_lease_until,
+        SELECT session_id, knowledge_base_id, session_type, active_run_id, run_acquired_at, run_lease_until,
                created_at, updated_at
         FROM agent_session
         WHERE session_id = #{sessionId}

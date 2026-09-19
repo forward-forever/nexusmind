@@ -1,12 +1,15 @@
 package com.wude.nexusmind.agent.memory;
 
-import com.wude.nexusmind.agent.memory.domain.AgentSessionEntity;
-import com.wude.nexusmind.agent.memory.mapper.AgentSessionMapper;
+import com.wude.nexusmind.agent.memory.infrastructure.persistence.AgentSessionEntity;
+import com.wude.nexusmind.agent.memory.domain.AgentSessionType;
+import com.wude.nexusmind.agent.memory.infrastructure.persistence.AgentSessionMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.wude.nexusmind.observability.NexusMindMetrics;
 
 import java.time.Duration;
 import java.util.Locale;
@@ -19,9 +22,17 @@ public class AgentSessionConcurrencyService {
     private static final Logger log = LoggerFactory.getLogger(AgentSessionConcurrencyService.class);
 
     private final AgentSessionMapper sessionMapper;
+    private final NexusMindMetrics metrics;
 
     public AgentSessionConcurrencyService(AgentSessionMapper sessionMapper) {
+        this(sessionMapper, NexusMindMetrics.noop());
+    }
+
+    @Autowired
+    public AgentSessionConcurrencyService(AgentSessionMapper sessionMapper,
+                                          NexusMindMetrics metrics) {
         this.sessionMapper = sessionMapper;
+        this.metrics = metrics;
     }
 
     @Transactional
@@ -29,11 +40,21 @@ public class AgentSessionConcurrencyService {
                           String requestedSessionId,
                           String runId,
                           Duration leaseDuration) {
+        return acquire(knowledgeBaseId, requestedSessionId, runId, leaseDuration,
+                AgentSessionType.NORMAL);
+    }
+
+    @Transactional
+    public String acquire(long knowledgeBaseId,
+                          String requestedSessionId,
+                          String runId,
+                          Duration leaseDuration,
+                          AgentSessionType sessionType) {
         long leaseMicros = leaseDuration.toNanos() / 1_000L;
         if (requestedSessionId == null || requestedSessionId.isBlank()) {
             String sessionId = UUID.randomUUID().toString();
             if (sessionMapper.insertWithLease(
-                    sessionId, knowledgeBaseId, runId, leaseMicros) != 1) {
+                    sessionId, knowledgeBaseId, sessionType, runId, leaseMicros) != 1) {
                 throw new IllegalStateException("Could not create leased agent session");
             }
             return sessionId;
@@ -48,6 +69,7 @@ public class AgentSessionConcurrencyService {
         }
         if (sessionMapper.acquireLease(
                 sessionId, knowledgeBaseId, runId, leaseMicros) != 1) {
+            metrics.sessionBusy();
             throw new AgentSessionBusyException(sessionId);
         }
         return sessionId;

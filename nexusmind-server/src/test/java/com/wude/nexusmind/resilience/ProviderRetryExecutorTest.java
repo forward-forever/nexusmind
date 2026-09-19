@@ -1,5 +1,7 @@
 package com.wude.nexusmind.resilience;
 
+import com.wude.nexusmind.observability.NexusMindMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -58,6 +60,33 @@ public class ProviderRetryExecutorTest {
         })).isSameAs(failure);
 
         assertThat(attempts).hasValue(3);
+    }
+
+    @Test
+    void metricsCountActualProviderAttemptsAndRetryDecision() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        ProviderRetryExecutor executor = new ProviderRetryExecutor(
+                new AiResilienceProperties(
+                        2, Duration.ZERO, 1.0, Duration.ofNanos(1), Duration.ZERO),
+                new ProviderFailureClassifier(), new NexusMindMetrics(registry));
+        AtomicInteger attempts = new AtomicInteger();
+
+        String result = executor.execute("alibaba", "embedding-batch", () -> {
+            if (attempts.incrementAndGet() == 1) {
+                throw HttpServerErrorException.create(
+                        HttpStatus.SERVICE_UNAVAILABLE, "unavailable", HttpHeaders.EMPTY, null, null);
+            }
+            return "ok";
+        });
+
+        assertThat(result).isEqualTo("ok");
+        assertThat(registry.get("nexusmind.ai.provider.calls")
+                .tag("operation", "embedding").counters().stream()
+                .mapToDouble(counter -> counter.count()).sum()).isEqualTo(2);
+        assertThat(registry.get("nexusmind.ai.provider.errors")
+                .tag("operation", "embedding").counter().count()).isEqualTo(1);
+        assertThat(registry.get("nexusmind.ai.provider.retries")
+                .tag("failureCategory", "http_5xx").counter().count()).isEqualTo(1);
     }
 
     private static void assertRetryThenSuccess(RuntimeException failure) {

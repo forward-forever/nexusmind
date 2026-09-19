@@ -58,6 +58,28 @@ public final class ProviderFailureClassifier {
         return OptionalInt.empty();
     }
 
+    public String metricCategory(Throwable failure) {
+        OptionalInt status = httpStatus(failure);
+        if (status.isPresent()) {
+            if (status.getAsInt() == 429) return "HTTP_429";
+            if (status.getAsInt() >= 500) return "HTTP_5XX";
+            return "HTTP_OTHER";
+        }
+        Throwable current = failure;
+        while (current != null) {
+            if (current instanceof SocketTimeoutException
+                    || current instanceof HttpTimeoutException
+                    || current instanceof TimeoutException) {
+                return "TIMEOUT";
+            }
+            if (current instanceof IOException || current instanceof ResourceAccessException) {
+                return "NETWORK";
+            }
+            current = current.getCause();
+        }
+        return "OTHER";
+    }
+
     private static Integer statusCodeOf(Throwable failure) {
         if (failure instanceof RestClientResponseException response) {
             return response.getStatusCode().value();

@@ -1,10 +1,10 @@
 package com.wude.nexusmind.agent.memory;
 
-import com.wude.nexusmind.agent.memory.domain.AgentMessageEntity;
 import com.wude.nexusmind.agent.memory.domain.AgentMessageRole;
-import com.wude.nexusmind.agent.memory.domain.AgentSessionEntity;
-import com.wude.nexusmind.agent.memory.mapper.AgentMessageMapper;
-import com.wude.nexusmind.agent.memory.mapper.AgentSessionMapper;
+import com.wude.nexusmind.agent.memory.infrastructure.persistence.AgentMessageEntity;
+import com.wude.nexusmind.agent.memory.infrastructure.persistence.AgentSessionEntity;
+import com.wude.nexusmind.agent.memory.infrastructure.persistence.AgentMessageMapper;
+import com.wude.nexusmind.agent.memory.infrastructure.persistence.AgentSessionMapper;
 import com.wude.nexusmind.context.NexusTokenEstimator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +14,8 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.wude.nexusmind.observability.NexusMindMetrics;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -33,15 +35,27 @@ public class AgentConversationMemoryService {
     private final AgentMessageMapper messageMapper;
     private final HistoricalCitationSanitizer citationSanitizer;
     private final NexusTokenEstimator tokenEstimator;
+    private final NexusMindMetrics metrics;
 
     public AgentConversationMemoryService(AgentSessionMapper sessionMapper,
                                           AgentMessageMapper messageMapper,
                                           HistoricalCitationSanitizer citationSanitizer,
                                           NexusTokenEstimator tokenEstimator) {
+        this(sessionMapper, messageMapper, citationSanitizer, tokenEstimator,
+                NexusMindMetrics.noop());
+    }
+
+    @Autowired
+    public AgentConversationMemoryService(AgentSessionMapper sessionMapper,
+                                          AgentMessageMapper messageMapper,
+                                          HistoricalCitationSanitizer citationSanitizer,
+                                          NexusTokenEstimator tokenEstimator,
+                                          NexusMindMetrics metrics) {
         this.sessionMapper = sessionMapper;
         this.messageMapper = messageMapper;
         this.citationSanitizer = citationSanitizer;
         this.tokenEstimator = tokenEstimator;
+        this.metrics = metrics;
     }
 
     @Transactional
@@ -137,8 +151,10 @@ public class AgentConversationMemoryService {
                                      String runId,
                                      String userContent,
                                      String assistantContent) {
-        sessionMapper.findOwnedByIdForUpdate(sessionId, runId)
-                .orElseThrow(() -> new AgentSessionLeaseLostException(sessionId));
+        if (sessionMapper.findOwnedByIdForUpdate(sessionId, runId).isEmpty()) {
+            metrics.sessionLeaseLost();
+            throw new AgentSessionLeaseLostException(sessionId);
+        }
         appendMessages(sessionId, userContent, assistantContent,
                 sessionMapper.touchOwned(sessionId, runId));
     }

@@ -1,8 +1,13 @@
-package com.wude.nexusmind.rag.retrieval;
+package com.wude.nexusmind.rag.api;
+
+import com.wude.nexusmind.rag.retrieval.RerankExecutionMetadata;
+import com.wude.nexusmind.rag.retrieval.RetrievalHit;
+import com.wude.nexusmind.rag.retrieval.RetrievalResult;
+import com.wude.nexusmind.rag.retrieval.RetrieverType;
 
 import java.util.List;
 
-public record DenseSearchResult(
+public record RetrievalSearchResult(
         String query,
         long knowledgeBaseId,
         String model,
@@ -13,12 +18,12 @@ public record DenseSearchResult(
         List<RetrievalHit> results,
         RerankExecutionMetadata rerank
 ) {
-    public DenseSearchResult {
+    public RetrievalSearchResult {
         results = List.copyOf(results);
     }
 
-    public static DenseSearchResult from(RetrievalResult result) {
-        return new DenseSearchResult(
+    public static RetrievalSearchResult from(RetrievalResult result) {
+        return new RetrievalSearchResult(
                 result.query(),
                 result.knowledgeBaseId(),
                 result.model(),

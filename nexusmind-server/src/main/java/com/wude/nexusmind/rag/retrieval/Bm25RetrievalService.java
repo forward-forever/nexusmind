@@ -41,9 +41,9 @@ public class Bm25RetrievalService implements RetrievalService {
         if (query == null || query.isBlank()) {
             throw new IllegalArgumentException("Search query is required");
         }
-        if (topK < 1 || topK > DenseRetrievalService.MAXIMUM_TOP_K) {
+        if (topK < 1 || topK > RetrievalLimits.MAX_ROUTE_CANDIDATES) {
             throw new IllegalArgumentException(
-                    "topK must be between 1 and " + DenseRetrievalService.MAXIMUM_TOP_K);
+                    "topK must be between 1 and " + RetrievalLimits.MAX_ROUTE_CANDIDATES);
         }
 
         KnowledgeBase knowledgeBase = knowledgeBaseService.get(knowledgeBaseId);

@@ -1,4 +1,6 @@
-package com.wude.nexusmind.knowledge.task;
+package com.wude.nexusmind.knowledge.task.infrastructure.persistence;
+
+import com.wude.nexusmind.knowledge.task.domain.DocumentTaskType;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;

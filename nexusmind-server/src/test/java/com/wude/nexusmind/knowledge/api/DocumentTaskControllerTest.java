@@ -2,9 +2,9 @@ package com.wude.nexusmind.knowledge.api;
 
 import com.wude.nexusmind.knowledge.task.DocumentTaskEnqueueResult;
 import com.wude.nexusmind.knowledge.task.DocumentTaskService;
-import com.wude.nexusmind.knowledge.task.DocumentTaskStatus;
-import com.wude.nexusmind.knowledge.task.DocumentTaskType;
-import com.wude.nexusmind.knowledge.task.KnowledgeDocumentTask;
+import com.wude.nexusmind.knowledge.task.domain.DocumentTaskStatus;
+import com.wude.nexusmind.knowledge.task.domain.DocumentTaskType;
+import com.wude.nexusmind.knowledge.task.infrastructure.persistence.KnowledgeDocumentTask;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 

@@ -19,6 +19,7 @@ import io.milvus.v2.client.ConnectConfig;
 import io.milvus.v2.client.MilvusClientV2;
 import org.springframework.ai.embedding.EmbeddingModel;
 import com.wude.nexusmind.resilience.ProviderRetryExecutor;
+import com.wude.nexusmind.observability.NexusMindMetrics;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -106,15 +107,18 @@ public class VectorConfiguration {
             HybridRouteCandidatePlanner candidatePlanner,
             ReciprocalRankFusion fusion,
             HybridRetrievalProperties properties,
-            @Qualifier("retrievalRouteExecutor") Executor routeExecutor) {
+            @Qualifier("retrievalRouteExecutor") Executor routeExecutor,
+            NexusMindMetrics metrics) {
         return new HybridRrfRetrievalService(
                 denseRetrievalService, bm25RetrievalService, candidatePlanner, fusion,
-                properties, properties.parallel().enabled() ? routeExecutor : Runnable::run);
+                properties, properties.parallel().enabled() ? routeExecutor : Runnable::run,
+                metrics);
     }
 
     @Bean
     @ConditionalOnProperty(name = "nexusmind.vector.enabled", havingValue = "true")
-    RetrievalServiceRegistry retrievalServiceRegistry(java.util.List<RetrievalService> services) {
-        return new RetrievalServiceRegistry(services);
+    RetrievalServiceRegistry retrievalServiceRegistry(java.util.List<RetrievalService> services,
+                                                       NexusMindMetrics metrics) {
+        return new RetrievalServiceRegistry(services, metrics);
     }
 }
