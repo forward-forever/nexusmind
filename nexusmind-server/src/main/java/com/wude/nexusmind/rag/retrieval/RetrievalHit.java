@@ -8,6 +8,7 @@ public record RetrievalHit(
         String fileName,
         int chunkIndex,
         double score,
+        // 检索分数类型
         RetrievalScoreType scoreType,
         String content,
         Integer pageNo,

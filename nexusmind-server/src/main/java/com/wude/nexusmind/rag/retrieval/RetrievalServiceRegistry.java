@@ -9,6 +9,9 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 检索服务注册类
+ */
 public class RetrievalServiceRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(RetrievalServiceRegistry.class);
@@ -48,8 +51,7 @@ public class RetrievalServiceRegistry {
         return service;
     }
 
-    private record InstrumentedRetrievalService(
-            RetrievalService delegate, NexusMindMetrics metrics) implements RetrievalService {
+    private record InstrumentedRetrievalService(RetrievalService delegate, NexusMindMetrics metrics) implements RetrievalService {
 
         @Override
         public RetrieverType type() {

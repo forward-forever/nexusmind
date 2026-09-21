@@ -35,6 +35,7 @@ public final class TokenTextTruncator {
             return Optional.empty();
         }
 
+        // 二分截断
         int low = 0;
         int high = text.length();
         int best = 0;

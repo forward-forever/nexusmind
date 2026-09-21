@@ -71,6 +71,7 @@ public class HybridRrfRetrievalService implements RetrievalService {
         CompletableFuture<RetrievalResult> denseFuture = null;
         CompletableFuture<RetrievalResult> bm25Future = null;
         try {
+            // 同时启动两个检索任务
             denseFuture = CompletableFuture.supplyAsync(
                     () -> retrieveRoute("dense", () -> denseRetrievalService.retrieve(
                             knowledgeBaseId, query, routeCandidateK)),

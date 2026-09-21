@@ -165,6 +165,7 @@ public class AgentChatService {
                                         AgentSessionType sessionType) {
         String normalizedMessage = requireMessage(message);
         validateKnowledgeBase(knowledgeBaseId);
+        // 每次对话生成一个runId。
         String runId = UUID.randomUUID().toString();
 
         return Flux.defer(() -> {
@@ -172,6 +173,7 @@ public class AgentChatService {
             String sessionId;
             try {
                 sessionId = sessionType == AgentSessionType.NORMAL
+                        // 抢占会话（数据库锁实现）
                         ? sessionConcurrencyService.acquire(
                                 knowledgeBaseId, requestedSessionId, runId,
                                 properties.sessionConcurrency().leaseDuration())
@@ -186,9 +188,11 @@ public class AgentChatService {
             }
             List<Message> history;
             try {
+                // 计算agent token预算
                 int memoryBudget = tokenBudgetCalculator.agentMemoryBudget(
                         promptFactory.create(List.of(), normalizedMessage),
                         properties.memory().maxTokens());
+                // 加载对话历史
                 history = memoryService.loadRecentMessages(
                         sessionId, properties.memory().maxMessages(), memoryBudget);
             } catch (ContextBudgetExceededException exceeded) {
@@ -202,6 +206,7 @@ public class AgentChatService {
                 sessionConcurrencyService.release(sessionId, runId);
                 throw failure;
             }
+            // unicast: 每个订阅者都会创建一个独立的流，不会相互影响  onBackpressureBuffer:下游消费不过来时先排队
             Sinks.Many<AgentStreamEvent> eventSink = Sinks.many().unicast().onBackpressureBuffer();
             Object emissionLock = new Object();
             AgentToolEventPublisher publisher = event -> emit(eventSink, emissionLock, event);
@@ -221,7 +226,7 @@ public class AgentChatService {
             }
             ToolCallingChatOptions options = optionsBuilder.build();
             Prompt prompt = new Prompt(promptFactory.create(history, normalizedMessage), options);
-
+            // 执行
             Mono<Void> execution = runLoop(runContext, prompt, normalizedMessage, runSample)
                     .onErrorResume(error -> finishWithError(runContext, error, runSample))
                     .doFinally(signal -> {
@@ -271,13 +276,14 @@ public class AgentChatService {
                             return persistSuccessfulTurn(
                                     runContext, currentUserMessage, finalAssistantContent, runSample);
                         }
-
+                        // 检查工具调用数量
                         runContext.reserveToolCalls(toolCalls.size(), properties.maxToolCalls());
                         runContext.ensureTimeRemaining();
                         return executeToolCalls(runContext, prompt, response)
                                 .flatMap(result -> {
                                     runContext.ensureTimeRemaining();
                                     Prompt nextPrompt = new Prompt(
+                                            // 拼接当前轮次的会话历史和工具调用结果
                                             result.conversationHistory(), prompt.getOptions());
                                     return runLoop(runContext, nextPrompt, currentUserMessage, runSample);
                                 });
@@ -298,7 +304,7 @@ public class AgentChatService {
         }
         Duration remaining = runContext.remaining();
         return Mono.fromRunnable(() -> memoryService.appendSuccessfulTurn(
-                        runContext.sessionId(), runContext.runId(), userContent, assistantContent))
+                        runContext.sessionId(), runContext.runId(), userContent, assistantContent)) // 写入会话历史
                 .subscribeOn(Schedulers.boundedElastic())
                 .timeout(remaining)
                 .onErrorMap(TimeoutException.class, ignored -> AgentExecutionException.timeout())
@@ -339,7 +345,7 @@ public class AgentChatService {
                     publishAssistantDelta(runContext, chunk);
                 })
                 .then(Mono.fromSupplier(() -> requireChatResponse(aggregated.get())))
-                .onErrorMap(error -> mapModelError(error));
+                .onErrorMap(AgentChatService::mapModelError);
     }
 
     private static boolean hasVisibleAssistantContent(ChatClientResponse chunk) {
@@ -510,6 +516,7 @@ public class AgentChatService {
     private static void emit(Sinks.Many<AgentStreamEvent> sink,
                              Object lock,
                              AgentStreamEvent event) {
+        // 加锁 多个线程可能会同时 emit
         synchronized (lock) {
             Sinks.EmitResult result = sink.tryEmitNext(event);
             if (result.isFailure() && result != Sinks.EmitResult.FAIL_CANCELLED

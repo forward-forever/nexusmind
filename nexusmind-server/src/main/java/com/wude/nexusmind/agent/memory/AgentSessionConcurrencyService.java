@@ -50,9 +50,11 @@ public class AgentSessionConcurrencyService {
                           String runId,
                           Duration leaseDuration,
                           AgentSessionType sessionType) {
-        long leaseMicros = leaseDuration.toNanos() / 1_000L;
+        long leaseMicros = leaseDuration.toNanos() / 1_000L; // 单位微秒
         if (requestedSessionId == null || requestedSessionId.isBlank()) {
+            // 会话ID为空或空白，生成一个随机的会话ID（首次对话）
             String sessionId = UUID.randomUUID().toString();
+            // 数据库精确到毫秒
             if (sessionMapper.insertWithLease(
                     sessionId, knowledgeBaseId, sessionType, runId, leaseMicros) != 1) {
                 throw new IllegalStateException("Could not create leased agent session");
@@ -60,6 +62,7 @@ public class AgentSessionConcurrencyService {
             return sessionId;
         }
 
+        // 会话ID不为空或空白，使用请求的会话ID
         String sessionId = normalizeSessionId(requestedSessionId);
         AgentSessionEntity session = sessionMapper.findById(sessionId)
                 .orElseThrow(() -> new AgentSessionNotFoundException(sessionId));
@@ -67,6 +70,7 @@ public class AgentSessionConcurrencyService {
                 || session.getKnowledgeBaseId() != knowledgeBaseId) {
             throw new AgentSessionKnowledgeBaseMismatchException(sessionId, knowledgeBaseId);
         }
+        // 抢占数据库锁
         if (sessionMapper.acquireLease(
                 sessionId, knowledgeBaseId, runId, leaseMicros) != 1) {
             metrics.sessionBusy();

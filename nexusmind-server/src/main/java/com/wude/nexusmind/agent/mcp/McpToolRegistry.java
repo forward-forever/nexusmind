@@ -6,10 +6,7 @@ import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.ObjectProvider;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 /** Immutable startup discovery snapshot for configured remote MCP tools. */
 public final class McpToolRegistry {
@@ -39,8 +36,7 @@ public final class McpToolRegistry {
 
         try {
             List<ToolCallback> callbacks = Arrays.stream(callbackProvider.getToolCallbacks())
-                    .sorted((left, right) -> left.getToolDefinition().name()
-                            .compareTo(right.getToolDefinition().name()))
+                    .sorted(Comparator.comparing(toolCallback -> toolCallback.getToolDefinition().name()))
                     .toList();
             Set<String> names = new HashSet<>();
             for (ToolCallback callback : callbacks) {

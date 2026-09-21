@@ -58,7 +58,7 @@ public class HybridRerankRetrievalService implements RetrievalService {
                 topK);
         List<RankedCandidate> ranked = validateAndMap(reranked, candidates, topK);
         List<RetrievalHit> hits = ranked.stream()
-                .sorted(Comparator.comparingDouble(RankedCandidate::score).reversed()
+                .sorted(Comparator.comparingDouble(RankedCandidate::score).reversed() // rerank分数
                         // Break ties by pre-rerank rank
                         .thenComparingInt(RankedCandidate::preRerankRank)
                         // Break ties by chunk ID

@@ -8,6 +8,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+/**
+ * 解析器注册类
+ */
 @Component
 public class DocumentParserRegistry {
 

@@ -16,6 +16,7 @@ spring:
           enabled: true
         streamable-http:
           connections:
+            # 配置MCP Demo连接
             demo:
               url: ${MCP_DEMO_BASE_URL:}
               endpoint: ${MCP_DEMO_ENDPOINT:}

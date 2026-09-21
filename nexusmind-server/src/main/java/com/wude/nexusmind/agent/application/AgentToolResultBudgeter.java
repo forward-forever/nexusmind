@@ -124,6 +124,7 @@ public final class AgentToolResultBudgeter {
                 continue;
             }
 
+            // 如果没有包含任何项目，则尝试截断第一个项目
             if (included.isEmpty()) {
                 int omittedAfterFirst = rankedHits.size() - 1;
                 TokenTextTruncator.TruncatedText shortened = truncator.truncateToFitRendered(
@@ -237,6 +238,7 @@ public final class AgentToolResultBudgeter {
                                                      int omitted) {
         int estimated = 0;
         KnowledgeSearchToolResult result = null;
+        // 收敛估计值
         for (int iteration = 0; iteration < 4; iteration++) {
             result = new KnowledgeSearchToolResult(
                     found, query, items, truncated, omitted, estimated);

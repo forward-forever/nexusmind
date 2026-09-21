@@ -22,6 +22,7 @@ public final class AgentRunTokenBudget {
         if (maxTokensPerCall <= 0) {
             throw new IllegalArgumentException("Tool-result call token budget must be positive");
         }
+        // min(单次工具调用能用的上限(配置)，整个 run 剩余额度(会话记忆、之前的工具结果都从同一个池子扣))
         int allowed = Math.min(maxTokensPerCall, maxTokens - usedTokens);
         if (allowed <= 0) {
             throw new ContextBudgetExceededException("Agent tool-result run budget is exhausted");

@@ -99,11 +99,12 @@ public class AgentConversationMemoryService {
         if (maxTokens < 0) {
             throw new IllegalArgumentException("Memory maxTokens must not be negative");
         }
+        // 确保轮次的完整性
         int completeMessageLimit = maxMessages - maxMessages % 2;
         if (completeMessageLimit == 0 || maxTokens == 0) {
             return List.of();
         }
-
+        // 加载最近的完整轮次
         List<AgentMessageEntity> descending = messageMapper.findRecentBySessionId(
                 sessionId, completeMessageLimit);
         List<AgentMessageEntity> chronological = new ArrayList<>(descending);
@@ -165,8 +166,10 @@ public class AgentConversationMemoryService {
                                 int touched) {
         requireContent(userContent, 4_000, "User message");
         requireContent(assistantContent, MAX_ASSISTANT_CONTENT_CHARS, "Assistant message");
+        // 保存用户消息
         int userInserted = messageMapper.insert(new AgentMessageEntity(
                 sessionId, AgentMessageRole.USER, userContent));
+        // 保存大模型回复消息
         int assistantInserted = messageMapper.insert(new AgentMessageEntity(
                 sessionId, AgentMessageRole.ASSISTANT, assistantContent));
         if (userInserted != 1 || assistantInserted != 1 || touched != 1) {

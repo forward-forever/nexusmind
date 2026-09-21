@@ -15,6 +15,9 @@ import java.net.http.HttpTimeoutException;
 import java.util.OptionalInt;
 import java.util.concurrent.TimeoutException;
 
+/**
+ *  失败分类器
+ */
 public final class ProviderFailureClassifier {
 
     public ProviderFailureCategory classify(Throwable failure) {

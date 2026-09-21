@@ -23,6 +23,7 @@ public final class NexusMcpToolNamePrefixGenerator implements McpToolNamePrefixG
         return prefixedToolName(serverName, tool == null ? null : tool.name());
     }
 
+    //  Spring AI 的 MCP 客户端在把远程工具包装成 ToolCallback 时,会调用这个 McpToolNamePrefixGenerator 来生成本地工具名。
     public String prefixedToolName(String serverName, String toolName) {
         String fullName = "mcp_" + sanitize(serverName) + "_" + sanitize(toolName);
         if (fullName.length() <= MAX_NAME_LENGTH) {

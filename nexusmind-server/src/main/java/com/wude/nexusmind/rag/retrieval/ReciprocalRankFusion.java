@@ -10,6 +10,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+/**
+ * 这个类实现了 Reciprocal Rank Fusion 算法
+ * RRF 算法通过融合多个检索器的检索结果，提高检索质量。
+ */
 public class ReciprocalRankFusion {
 
     private static final Logger log = LoggerFactory.getLogger(ReciprocalRankFusion.class);
@@ -24,14 +28,15 @@ public class ReciprocalRankFusion {
         if (finalTopK <= 0) {
             throw new IllegalArgumentException("Final topK must be positive");
         }
+        // key：chunkId
         Map<Long, Accumulator> accumulators = new LinkedHashMap<>();
         addRoute(accumulators, safeHits(denseHits), RetrieverType.DENSE, RetrievalScoreType.COSINE, k);
         addRoute(accumulators, safeHits(bm25Hits), RetrieverType.BM25, RetrievalScoreType.BM25, k);
         return accumulators.values().stream()
-                .sorted(Comparator.comparingDouble(Accumulator::score).reversed()
-                        .thenComparing(Comparator.comparingInt(Accumulator::contributionCount).reversed())
-                        .thenComparingInt(Accumulator::bestRank)
-                        .thenComparingLong(Accumulator::chunkId))
+                .sorted(Comparator.comparingDouble(Accumulator::score).reversed() // RRF 分
+                        .thenComparing(Comparator.comparingInt(Accumulator::contributionCount).reversed()) // 贡献数
+                        .thenComparingInt(Accumulator::bestRank) // 最佳排名
+                        .thenComparingLong(Accumulator::chunkId)) // chunkId
                 .limit(finalTopK)
                 .map(Accumulator::toHit)
                 .toList();
@@ -54,6 +59,7 @@ public class ReciprocalRankFusion {
                         "%s route returned score type %s instead of %s"
                                 .formatted(retrieverType, hit.scoreType(), expectedScoreType));
             }
+            // 获取或创建 Accumulator
             Accumulator accumulator = accumulators.computeIfAbsent(
                     hit.chunkId(), ignored -> new Accumulator(hit));
             accumulator.add(hit, new RetrievalContribution(
@@ -67,10 +73,20 @@ public class ReciprocalRankFusion {
         private double score;
         private int bestRank = Integer.MAX_VALUE;
 
+        /**
+         * 累加器，用于计算每个 chunk 的 RRF 分数
+         * @param canonical 累加器的原始检索结果
+         */
         private Accumulator(RetrievalHit canonical) {
             this.canonical = canonical;
         }
 
+        /**
+         * 向累加器中添加一个检索结果
+         * @param hit 检索结果
+         * @param contribution 检索贡献
+         * @param k k
+         */
         private void add(RetrievalHit hit, RetrievalContribution contribution, int k) {
             if (contributions.stream().anyMatch(existing ->
                     existing.retrieverType() == contribution.retrieverType())) {

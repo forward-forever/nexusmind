@@ -51,11 +51,15 @@ public final class ProviderStreamingRetry {
                 .retryWhen(Retry.from(signals -> signals.concatMap(signal -> {
                     Throwable failure = signal.failure();
                     long retryNumber = signal.totalRetries() + 1;
+                    // 模型已经开始向用户流出可见内容,或已经执行过工具调用,则不重试
                     if (observableSideEffect.getAsBoolean()
+                            // 如果重试次数超过最大重试次数,则不重试
                             || retryNumber > properties.maxRetries()
+                            // 如果失败类别不是重试类别,则不重试
                             || classifier.classify(failure) != ProviderFailureCategory.RETRYABLE) {
                         return Mono.error(failure);
                     }
+                    // // 指数退避 + 随机抖动
                     Duration delay = withJitter(properties.delayForRetry(retryNumber));
                     Duration timeLeft;
                     try {

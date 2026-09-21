@@ -16,6 +16,9 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ *  检查检索结果的可见性，过滤掉无效的检索结果，如孤儿文档、未索引的文档、状态不为READY的文档
+ */
 public class RetrievalVisibilityFilter {
 
     private static final Logger log = LoggerFactory.getLogger(RetrievalVisibilityFilter.class);
