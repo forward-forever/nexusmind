@@ -1,145 +1,333 @@
-# NexusMind Architecture（NexusMind 架构）
+# NexusMind Architecture
 
-## System overview（系统概览）
+本文以当前 V4 冻结代码为准，说明 NexusMind 的运行边界、数据所有权、核心 Pipeline 和故障模型。正文以中文为主，保留 Source of Truth、Projection、Tool Calling 等关键技术术语。
 
-```text
-                         ┌────────────────┐
-                         │ Vue Workbench  │
-                         └───────┬────────┘
-                                 │ HTTP / SSE
-                          Spring Boot
-                                 │
-      ┌─────────────┬────────────┼─────────────┐
-      │             │            │             │
-   Knowledge     Retrieval      RAG          Agent
-      │             │            │             │
-      │      Dense / BM25 / RRF  │       Tool Calling Loop
-      │            / Rerank      │        ┌────┴────┐
-      │             │            │      Native     MCP
-      ▼             ▼            │       Tools     Client
-    MySQL          Milvus      Retrieval            │
-      ▲                                             Remote
-      │                                             MCP
- Durable Tasks
+## 1. System Overview
+
+NexusMind 是一个单体 Spring Boot 应用和 Vue Workbench。它同时保留固定 RAG 与 Agent 两条路径：RAG 提供可预测的 Retrieval → Context → LLM；Agent 让模型通过真实 `tool_call` 决定是否使用知识工具或外部 MCP Tool。
+
+```mermaid
+flowchart TB
+    UI[Vue Workbench]
+    API[Spring Boot API and SSE]
+    KNOW[Knowledge]
+    TASK[Durable Tasks]
+    RET[Retrieval]
+    RAG[Streaming RAG]
+    AGENT[Agent Runtime]
+    NATIVE[Native Tools]
+    MCP[MCP Client]
+    MYSQL[(MySQL)]
+    MILVUS[(Milvus)]
+    MODEL[Model Studio]
+    REMOTE[Remote MCP Server]
+
+    UI --> API
+    API --> KNOW
+    API --> RET
+    API --> RAG
+    API --> AGENT
+    KNOW --> TASK
+    TASK --> MYSQL
+    TASK --> MODEL
+    TASK --> MILVUS
+    RET --> MYSQL
+    RET --> MILVUS
+    RET --> MODEL
+    RAG --> RET
+    RAG --> MODEL
+    AGENT --> MODEL
+    AGENT --> NATIVE
+    AGENT --> MCP
+    AGENT --> MYSQL
+    NATIVE --> RET
+    MCP --> REMOTE
 ```
 
-The code is organized feature-first and layer-second. API, application logic, domain vocabulary, and persistence details stay inside their owning feature. NexusMind deliberately avoids a global `controller/service/mapper/domain` package tree and does not add artificial DDD abstractions where a typed configuration, enum, MyBatis entity, mapper, and application service are sufficient.
+系统的核心边界是：MySQL 保存业务事实，Milvus 保存可重建的检索投影，外部模型和 MCP Server 都位于不可信的网络边界之外。
 
-代码按「功能优先、分层其次」的方式组织。API、应用逻辑、领域词汇和持久化细节都保留在各自所属的功能模块内部。NexusMind 刻意避免全局的 `controller/service/mapper/domain` 包结构，在类型化配置、枚举、MyBatis 实体、mapper 和应用服务已经足够的地方，不会添加人为的 DDD 抽象。
+## 2. Knowledge Ingestion
 
-## Ingestion and durable work（数据摄入与持久化任务）
+文档上传支持 PDF、Markdown 与 UTF-8 TXT。Upload 只保存原始文件和 `knowledge_document`，不会自动 Process；Process 负责 Parser、字符窗口 Chunking 和 MySQL Chunk 持久化；Index 再读取当前 Chunk，调用 `qwen3.7-text-embedding-flash` 并写入 Milvus。
 
-```text
-Upload
-  ↓
-knowledge_document (UPLOADED)
-  ↓ enqueue
-knowledge_document_task (PENDING)
-  ↓ atomic claim + runToken fencing
-Worker (RUNNING + heartbeat)
-  ├── PROCESS → parser → chunks in MySQL → READY
-  └── INDEX   → embedding → Milvus upsert → INDEXED
-  ↓
-SUCCEEDED / FAILED
+默认 Chunk 参数为 500 chars、100 chars overlap。V4 的 token budget 控制 Prompt Context，不改变 ingestion chunking。Process 与 Index 是两个独立、由用户显式触发的动作。
+
+## 3. Durable Document Tasks
+
+Process / Index 不在 HTTP Request 内执行。Controller 先在短事务中持久化 `knowledge_document_task`，成功提交后返回 `202 Accepted`；后台 Worker 再认领任务。
+
+```mermaid
+flowchart LR
+    UPLOAD[Upload]
+    DOC[knowledge_document]
+    ENQUEUE[Enqueue logical task]
+    PENDING[PENDING]
+    CLAIM[Atomic claim]
+    RUNNING[RUNNING]
+    PROCESS[PROCESS Parse and Chunk]
+    INDEX[INDEX Embed and Upsert]
+    SUCCESS[SUCCEEDED]
+    FAILURE[FAILED]
+    HEARTBEAT[Heartbeat stale]
+    RECOVERY[Reconciliation]
+
+    UPLOAD --> DOC
+    DOC --> ENQUEUE
+    ENQUEUE --> PENDING
+    PENDING --> CLAIM
+    CLAIM --> RUNNING
+    RUNNING --> PROCESS
+    RUNNING --> INDEX
+    PROCESS --> SUCCESS
+    PROCESS --> FAILURE
+    INDEX --> SUCCESS
+    INDEX --> FAILURE
+    RUNNING -. missing heartbeat .-> HEARTBEAT
+    HEARTBEAT --> RECOVERY
+    RECOVERY --> PENDING
+    RECOVERY --> SUCCESS
+    RECOVERY --> FAILURE
 ```
 
-The MySQL task row is a durable queue and execution coordination record. Execution is at-least-once. Stable chunk identity, transactional chunk replacement, Milvus upsert, stale-heartbeat recovery, and business-state reconciliation make repeated work converge; this is not described as exactly-once execution.
+关键设计：
 
-MySQL 任务行既是持久化队列，也是执行协调记录。执行语义为至少一次。稳定的 chunk 标识、事务化的 chunk 替换、Milvus upsert、过期心跳恢复以及业务状态对账，使重复执行最终收敛；这并未被描述为恰好一次执行。
+- `(document_id, task_type)` 是逻辑任务唯一键；重复 enqueue 复用同一行。
+- Worker 使用 `FOR UPDATE SKIP LOCKED` 做短事务 atomic claim，默认并发为 2。
+- 每次 claim 生成新的 `runToken`；heartbeat、success、failure 更新都必须匹配当前 token。
+- 默认 heartbeat 为 10 秒、stale threshold 为 5 分钟、recovery scan 为 30 秒。
+- Recovery 先检查 Document 业务状态。Document 已 `READY` 或 `INDEXED` 时直接把 stale Task 对账为 `SUCCEEDED`，而不是盲目重做。
+- Process 事务化替换整份 Chunk；Index 以稳定 `chunkId` upsert Milvus，因此重复执行最终收敛。
 
-## Retrieval and RAG（检索与 RAG）
+该模型是 **durable DB task + at-least-once execution + idempotent operation + reconciliation**，不声称 exactly-once。`runToken` 能防止旧 Worker 覆盖新任务所有者，但不能撤销已经发生的外部副作用。
 
-Dense retrieval provides semantic matching, while BM25 provides lexical matching. Each route applies MySQL visibility validation before Application RRF. Hybrid executes Dense and BM25 concurrently but preserves the same candidate depth, RRF formula, deterministic tie-break, failure behavior, and provenance. Hybrid Rerank sends the RRF TopN to `qwen3.7-text-rerank` and maps results by provider index.
+## 4. Retrieval Pipeline
 
-Dense 检索提供语义匹配，BM25 提供词法匹配。每条路由都会在应用层 RRF 之前执行 MySQL 可见性校验。Hybrid 并发执行 Dense 和 BM25，但保持相同的候选深度、RRF 公式、确定性平局裁决、失败行为和来源信息。Hybrid Rerank 把 RRF 的 TopN 发送给 `qwen3.7-text-rerank`，并按提供商返回的索引映射结果。
+四种正式 Retriever 为 `DENSE`、`BM25`、`HYBRID_RRF`、`HYBRID_RERANK`。Hybrid 的两条 route 在专用有界 Executor 上并行执行，但每一路都先完成 MySQL visibility validation，只有 READY、INDEXED、属于当前 KB 的 Chunk 才会参与 Application RRF。
 
-`RetrievalResult.model` and `dimension` were reviewed during final cleanup. They remain as optional execution metadata because evaluation reports and the retrieval debug response use them for reproducibility; non-vector routes may leave them absent/zero. Removing them would create broad type churn without changing behavior, so this P2 was documented rather than expanded into a retrieval-model redesign.
+```mermaid
+flowchart LR
+    QUERY[Query]
+    DENSE[Dense retrieval]
+    BM25[BM25 retrieval]
+    DVIS[MySQL visibility]
+    BVIS[MySQL visibility]
+    RRF[Application RRF]
+    TOPN[Candidate TopN]
+    RERANK[Optional cross encoder rerank]
+    TOPK[Final TopK]
 
-在最终清理中重新审视了 `RetrievalResult.model` 和 `dimension`。它们作为可选的执行元数据保留下来，因为评估报告和检索调试响应会用它们来保证可复现性；非向量路由可以让它们缺失或为零。移除它们会造成大范围的类型改动却不会改变行为，因此这个 P2 项只是被记录在文档中，而没有扩展成一次检索模型的重构。
-
-Fixed RAG is intentionally predictable:
-
-固定 RAG 刻意保持可预测：
-
-```text
-Question → configured RetrievalService → token-budgeted rank prefix
-         → Prompt → ChatModel → SSE answer + only the sources the model saw
+    QUERY --> DENSE
+    QUERY --> BM25
+    DENSE --> DVIS
+    BM25 --> BVIS
+    DVIS --> RRF
+    BVIS --> RRF
+    RRF --> TOPN
+    TOPN --> RERANK
+    RERANK --> TOPK
+    TOPN --> TOPK
 ```
 
-The product default remains DENSE because the current benchmark is saturated and provides no evidence that more latency and provider cost should be enabled by default.
-
-产品默认仍然是 DENSE，因为当前的基准测试已经饱和，没有证据表明应该默认开启更高的延迟和提供商成本。
-
-## Agent（Agent）
+RRF 只使用 1-based rank：
 
 ```text
-                    ┌→ search_knowledge_base → Retrieval V2
-Agent LLM → tool ───┤
-                    ├→ get_document_context → MySQL chunks
-                    └→ allowlisted MCP tool → Remote MCP server
-      ↑                                      │
-      └──────────── tool result ─────────────┘
+RRF(d) = Σ 1 / (k + rank_i(d)), k = 60
 ```
 
-The Java layer does not hard-code Search → Context. Each next action comes from a real model `tool_call`. Native tools obtain `knowledgeBaseId`, the deadline, source registry, and run budget from server-side ToolContext. MCP is disabled by default, Streamable HTTP only, startup-discovered, allowlisted, name-validated, and treated as an external untrusted capability.
+COSINE 与 BM25 raw score 不在同一尺度，不参与融合计算。默认 route candidate depth 由 multiplier/min/max policy 计算；Rerank 默认接收 Hybrid Top20，并按 Provider 返回的 index 映射回原始 `RetrievalHit`。上游 Dense/BM25 contribution、RRF rank 与 score 会作为 provenance 保留。
 
-Java 层不会硬编码 Search → Context 的流程。每一个后续动作都来自模型真实的 `tool_call`。原生工具从服务端的 ToolContext 获取 `knowledgeBaseId`、截止时间、来源注册表和 run 预算。MCP 默认禁用，仅支持 Streamable HTTP，在启动时被发现，经过白名单校验和名称校验，并被当作外部的不可信能力对待。
+任一路异常会令整个 Hybrid 失败；某一路返回空列表则是合法结果。产品默认 Retriever 仍为 `DENSE`，因为当前 benchmark 已饱和，没有实验依据证明更高 latency 和成本应成为默认路径。
 
-Cross-request memory persists only `USER` and final `ASSISTANT` messages. Current-run assistant tool calls and tool responses remain execution state. A DB-time session lease allows one active run per session; `runId` fences release and final memory commit. Source IDs such as `S1` are scoped to one Agent Run, and historical source markers are sanitized before reuse.
+## 5. RAG Pipeline
 
-跨请求记忆只持久化 `USER` 和最终的 `ASSISTANT` 消息。当前 run 中 assistant 的工具调用和工具响应仍属于执行状态。基于数据库时间的会话租约允许每个会话只有一个活跃 run；`runId` 为释放操作和最终记忆提交提供栅栏保护。诸如 `S1` 这样的来源 ID 只作用于单个 Agent Run，历史来源标记在重用之前会被清洗。
+固定 RAG 通过配置选择 `RetrievalService`，按 rank prefix 构建 token-aware Context。系统只把模型实际看到的 Sources 返回给浏览器。
 
-Application token budgets constrain RAG context, historical memory, each tool result, total run tool results, and every model turn. Estimates are conservative local approximations, not exact Qwen token counts.
+```mermaid
+sequenceDiagram
+    participant USER as User
+    participant API as RAG API
+    participant RET as RetrievalService
+    participant CTX as Token Context Builder
+    participant MODEL as Chat Model
+    participant SSE as Browser SSE
 
-应用层 token 预算约束 RAG 上下文、历史记忆、每个工具结果、整个 run 的工具结果总量以及每一次模型轮次。估算值是保守的本地近似值，而不是 Qwen 的精确 token 计数。
+    USER->>API: Question and TopK
+    API->>RET: retrieve
+    RET-->>API: ranked RetrievalHits
+    API->>CTX: build within token budget
+    CTX-->>API: formatted context and included hits
+    API-->>SSE: sources for included hits only
+    API->>MODEL: system prompt, question, context
+    MODEL-->>SSE: assistant_delta
+    API-->>SSE: done or error
+```
 
-## Data ownership（数据归属）
+完整 Source Block（citation、文件名、页码、section、content）一起计入预算。正常情况下按 rank 加入完整 Chunk；第一个 Source 单独超限时只截断其 content 并保留 citation metadata。System Prompt 与当前 Question 已超过有效预算时，返回 `RAG_CONTEXT_BUDGET_EXCEEDED`，不会调用模型，也不会静默截断用户问题。
 
-| Component | Ownership |
+## 6. Agent Runtime and MCP Integration
+
+Agent 使用 application-controlled Tool Loop：应用负责 Tool Schema、计数、deadline、SSE 和安全边界，模型负责通过真实 `tool_call` 决定下一步。不存在固定的 Search → Context → MCP Java Workflow。
+
+```mermaid
+flowchart TB
+    USER[User]
+    LLM[Agent LLM]
+    DECIDE[Model decides next action]
+    MANAGER[ToolCallingManager]
+    SEARCH[search_knowledge_base]
+    CONTEXT[get_document_context]
+    MCPCLIENT[MCP Client]
+    REMOTE[External MCP Tool]
+    RESULT[Tool Result]
+    FINAL[Final Answer and Sources]
+    GUARDS[Tool limit, deadline, token budget]
+    SESSION[Session lease and memory]
+
+    USER --> LLM
+    LLM --> DECIDE
+    DECIDE --> FINAL
+    DECIDE --> MANAGER
+    MANAGER --> SEARCH
+    MANAGER --> CONTEXT
+    MANAGER --> MCPCLIENT
+    MCPCLIENT -->|Streamable HTTP| REMOTE
+    SEARCH --> RESULT
+    CONTEXT --> RESULT
+    REMOTE --> RESULT
+    RESULT --> LLM
+    GUARDS -. applies to .-> LLM
+    GUARDS -. applies to .-> MANAGER
+    SESSION -. supplies context .-> LLM
+```
+
+原生知识工具的模型可见参数保持最小：
+
+- `search_knowledge_base(query)` 发现当前 KB 中的相关 Source。
+- `get_document_context(sourceId)` 只接受本 Run 已注册的 Source ID，并读取同 Document 的相邻 Chunk。
+
+MCP 默认关闭。启用后由 Spring AI Streamable HTTP Client 在启动期发现工具，NexusMind 对最终名称做规范化和 allowlist 筛选，再把允许的 Callback 合入同一个 Tool Catalog。LLM 从不直接请求 MCP Server；远程 description、schema 与 result 都按外部不可信数据处理。当前只消费 MCP Tools，不支持 MCP Resources、Prompts、OAuth 或热更新。
+
+每个 Agent Run 最多 5 次 Tool invocation，共享一个 30 秒 absolute deadline。MCP invocation 与原生工具使用同一个 Tool Limit 和 per-run Tool Result Budget。
+
+## 7. Conversation Memory and Session Concurrency
+
+Session 跨多个 HTTP Request；Run 只代表一次 Request。每个 Run 都会重新创建 `AgentRunContext`、`AgentSourceRegistry`、deadline、tool counter 和 run token budget。
+
+```mermaid
+flowchart TB
+    SESSION[Conversation Session]
+    RUN1[Run 1]
+    RUN2[Run 2]
+    RUN3[Run 3]
+    RUNTIME[New RunContext, SourceRegistry and deadline]
+    MEMORY[(agent_message)]
+    TRACE[Tool calls and Tool responses]
+    LEASE[(DB session lease)]
+
+    SESSION --> RUN1
+    SESSION --> RUN2
+    SESSION --> RUN3
+    RUN2 --> RUNTIME
+    RUN1 -->|USER and final ASSISTANT| MEMORY
+    RUN2 -->|USER and final ASSISTANT| MEMORY
+    RUN3 -->|USER and final ASSISTANT| MEMORY
+    RUN1 -. not persisted .-> TRACE
+    RUN2 -. not persisted .-> TRACE
+    RUN3 -. not persisted .-> TRACE
+    LEASE -->|one active run per session| SESSION
+```
+
+MySQL 只持久化成功 Turn 的 `USER` 和 Final `ASSISTANT`，不保存 System Prompt、Tool Call、Tool Response 或 SSE Trace。失败、超时、Tool Limit、Lease Lost 和 Memory Commit 失败的 Run 不写入当前 Turn。
+
+`S1`、`S2` 等 Source ID 只在一个 Run 内有效。历史 Assistant 文本在数据库中保持原样，但注入下一轮 Prompt 前会移除旧 `[S<number>]` 标记。当前 Run 的 Citation 会与 `AgentSourceRegistry` 校验；无效引用只记录 metric 和 warning，不重写已经流式输出的回答。
+
+Session concurrency 使用 MySQL DB-time lease，而不是 JVM Lock 或长事务行锁。`runId` 是 lease owner；release 和 successful memory commit 都必须匹配 owner。进程崩溃后 lease 到期，新 Run 才能获得 Session。
+
+## 8. Token and Context Management
+
+Provider 的最大 Context Window 不等于应用预算。NexusMind 使用本地 `NexusTokenEstimator` 做保守估算，它并非 Qwen 官方 tokenizer，因此通过 safety margin 吸收 tokenizer mismatch 和序列化开销。
+
+默认全局 policy：
+
+| Setting | Value |
+|---|---:|
+| `max-context-tokens` | 32768 |
+| `reserved-output-tokens` | 4096 |
+| `safety-margin-tokens` | 4096 |
+| `tool-definition-reserve-tokens` | 4096 |
+| RAG context max | 12000 |
+| Memory max | 12 messages / 6000 tokens |
+| Tool result max | 5000 per call / 12000 per run |
+
+Memory 同时受 message count 和 token 限制，超限时从最旧的完整 User/Assistant Turn 开始淘汰，不删除数据库历史，也不截断当前 User。Search Tool 按 retrieval rank prefix 选择结果；Document Context Tool 优先保留 target Source。每次模型调用前仍执行最终预算校验，超限时返回 `AGENT_CONTEXT_BUDGET_EXCEEDED`，不调用 Provider。
+
+## 9. Data Ownership
+
+| Component | Responsibility | Not responsible for |
+|---|---|---|
+| MySQL `knowledge_*` | KB、Document、Chunk 业务 Source of Truth | 向量相似度检索 |
+| Milvus | 可重建 Dense/BM25 Retrieval Projection | Document 业务状态判定 |
+| `knowledge_document_task` | Durable execution coordination | 代替 Document/Chunk 业务事实 |
+| `agent_session` / `agent_message` | Cross-request conversation outcome | 当前 Run Tool Trace |
+| `AgentRunContext` | 单次 Run 的 deadline、计数、Source 和预算 | Session 长期持久化 |
+| Remote MCP Server | 外部能力实现 | NexusMind 本地策略与授权 |
+
+这个划分解释了为什么 Retrieval 要回到 MySQL 做 visibility validation，也解释了为什么 stale task recovery 先读取 Document 业务状态。
+
+## 10. Failure Model
+
+| Failure | Behavior |
 |---|---|
-| MySQL `knowledge_*` | Business source of truth for KBs, documents and chunks |
-| Milvus | Derived, rebuildable retrieval projection |
-| `knowledge_document_task` | Durable execution coordination, not business truth |
-| Agent Session / Message | Cross-request conversational outcome |
-| AgentRunContext | Single-run counters, deadline, source identity and tool budget |
-| MCP Server | External, untrusted capability governed by local policy |
+| Provider timeout、network、408、429、5xx | 有界 retry、exponential backoff 和 jitter |
+| Provider 400、401、403、404 或非法配置 | 立即失败，不重试 |
+| Streaming 已输出 delta 或已开始 Tool | 失败，不重放当前 Turn |
+| Hybrid 任一路异常 | 整个 Hybrid 失败，不静默降级 |
+| Document Worker crash | Heartbeat stale 后做业务状态 reconciliation |
+| 同 Session 并发请求 | DB lease 只允许一个 active Run |
+| 旧 Run 恢复执行 | Fenced release 与 memory commit 阻止覆盖新 Owner |
+| Context 超预算 | Provider 调用前确定性失败 |
+| MCP timeout / protocol / remote error | `tool_error → error`，不自动 retry |
 
-| 组件 | 归属 |
-|---|---|
-| MySQL `knowledge_*` | 知识库、文档和 chunk 的业务真相来源 |
-| Milvus | 派生的、可重建的检索投影 |
-| `knowledge_document_task` | 持久化执行协调记录，而非业务真相 |
-| Agent Session / Message | 跨请求的对话结果 |
-| AgentRunContext | 单次 run 的计数器、截止时间、来源标识和工具预算 |
-| MCP Server | 外部的不可信能力，由本地策略管控 |
+Embedding 失败后不会 fallback 到另一模型，因为混合向量空间会污染 Milvus。Rerank 失败后也不会假装返回已经精排的结果。
 
-## Failure model（故障模型）
+## 11. Observability
 
-- Provider transient failures: bounded retry with backoff and jitter.
-  - 提供商瞬时故障：带退避和抖动的有界重试。
-- Provider permanent failures: immediate failure; no alternate-model fallback.
-  - 提供商永久性故障：立即失败；没有备用模型回退。
-- Streaming failure after observable output or tool execution: fail without replay.
-  - 在产生可观察输出或执行工具之后发生流式失败：直接失败，不重放。
-- Hybrid route failure: whole Hybrid request fails; an empty route is still valid.
-  - Hybrid 路由失败：整个 Hybrid 请求失败；某条路由为空仍然是合法的。
-- Document worker crash: stale heartbeat recovery plus business-state reconciliation.
-  - 文档 worker 崩溃：过期心跳恢复加上业务状态对账。
-- Agent session contention: atomic DB lease; crash recovery through expiry.
-  - Agent 会话竞争：原子性的数据库租约；通过过期机制实现崩溃恢复。
-- Context overflow: deterministic application budget error before provider invocation.
-  - 上下文溢出：在调用提供商之前返回确定性的应用层预算错误。
-- MCP failure: tool error; no MCP-specific automatic retry.
-  - MCP 失败：工具错误；没有 MCP 专属的自动重试。
+Actuator 只暴露 `health`、`info`、`prometheus`。Micrometer 应用指标统一使用 `nexusmind.*`，覆盖 RAG、Retrieval、Provider、Agent、Tool、MCP、Document Task、Context Budget、Session Lease 与 Citation。
 
-## Guardrails and observability（护栏与可观测性）
+指标标签只允许 retriever、outcome、operation、failureCategory、taskType、toolType 等低基数枚举。runId、sessionId、documentId、query、动态 MCP tool name 和 remote URL 不进入 tag。日志保留执行身份、duration 与 outcome，但不记录 prompt、conversation history、chunk body、tool result、Authorization 或 API key。
 
-Agent limits include five tool invocations, one absolute deadline, minimal schemas, run-scoped source IDs, session/KB binding, token budgets, and untrusted tool-result rules. Actuator exposes health, info and Prometheus only. Micrometer metrics use the `nexusmind.*` namespace and low-cardinality tags. Logs carry execution identity and outcome but exclude prompts, document contents, tool result bodies, authorization values, API keys, and remote MCP URLs.
+NexusMind 提供可抓取的 Prometheus surface，但不捆绑 Grafana、OpenTelemetry Collector、Tracing Backend 或集中式日志系统。
 
-Agent 的限制包括五次工具调用、一个绝对截止时间、最小化的 schema、run 级别的来源 ID、会话/知识库绑定、token 预算以及不可信工具结果规则。Actuator 只暴露 health、info 和 Prometheus。Micrometer 指标使用 `nexusmind.*` 命名空间和低基数标签。日志携带执行标识和结果，但排除提示词、文档内容、工具结果正文、授权值、API key 和远程 MCP URL。
+## 12. Package Boundaries
 
-## Package boundaries（包边界）
+后端采用 **feature-first, layer-second**：
 
-The final cleanup moved Agent Memory persistence entities/mappers under `agent.memory.infrastructure.persistence`, kept roles and session types under `agent.memory.domain`, and split Document Task domain enums from MyBatis persistence. Existing cohesive packages such as `agent.tool`, `agent.mcp`, `rag.evaluation`, and `rag.retrieval` were intentionally retained. This is a structural cleanup only; it does not rewrite the Agent loop, retrieval algorithms, task worker, MCP integration, or token-budget behavior.
+- `knowledge`：API、Document domain/service、parser/chunk/storage、durable task。
+- `rag`：Retrieval、Milvus、Embedding、Rerank、Evaluation、RAG API/stream。
+- `agent`：Application loop、tool、memory、prompt、stream、MCP、evaluation。
+- `context`：共享 Token Estimator、Calculator 与 Text Truncator。
+- `resilience`：Provider Failure Classification 与 Retry boundary。
+- `observability`：Micrometer facade 和 Health contributor。
 
-最终清理把 Agent Memory 的持久化实体和 mapper 移到了 `agent.memory.infrastructure.persistence` 之下，把角色和会话类型保留在 `agent.memory.domain` 之下，并将 Document Task 的领域枚举与 MyBatis 持久化拆分开。诸如 `agent.tool`、`agent.mcp`、`rag.evaluation` 和 `rag.retrieval` 这些原本就内聚的包被有意保留。这只是一次结构性清理；它不会重写 Agent 循环、检索算法、任务 worker、MCP 集成或 token 预算行为。
+MyBatis Entity/Mapper 属于 persistence infrastructure，Domain 表示业务状态和规则。项目没有为了形式创建 AggregateRoot、CommandBus 或无实际职责的 Repository Port。
+
+## 13. Key Engineering Decisions
+
+| Decision | Why | Alternative / Trade-off |
+|---|---|---|
+| MySQL 是 Source of Truth，Milvus 是 Projection | 业务可见性和状态需要事务事实；向量索引可重建 | Retrieval 需要额外 visibility reconciliation |
+| Application RRF | 保证每一路先完成业务过滤，并保留 route provenance | 比 Milvus native hybrid 多一层应用编排 |
+| 默认 RAG 使用 Dense | 当前 benchmark 已饱和，高级路径没有可测默认收益 | 真实复杂 Corpus 可能需要 Hybrid/Rerank |
+| Application-controlled Tool Loop | 能发布稳定 SSE 并强制 Tool Limit、deadline、budget | 比框架全自动 Tool Loop 多一些 orchestration |
+| Run-scoped Source IDs | 不向模型暴露 Chunk/Document 内部 ID | Source ID 不能跨 Run 复用 |
+| 仅保存 User + Final Assistant | Memory 保存 conversation outcome，不保存 execution trace | 后续问题需要时会重新调用工具 |
+| MySQL durable task queue | 单体已依赖 MySQL，可获得 durability、claim、recovery | 不适合替代独立大规模分布式 MQ |
+| DB session lease | 多实例可见，避免 30 秒长事务锁 | Lease expiry 带来有限恢复窗口 |
+| Application token budget | 控制 latency、cost 和不可预测 Tool Loop 增长 | 本地估算不是 Qwen 精确 token 数 |
+| Controlled remote MCP | 工具需启动发现、命名和 allowlist 后才可见 | 不提供用户任意注册、OAuth 或动态热更新 |
+
+## 14. Design Trade-offs and Boundaries
+
+NexusMind 是个人 engineering project，不声称具备完整高可用或大规模生产基础设施。当前明确边界包括：没有 Provider circuit breaker/fallback，没有长期 semantic memory，MCP 仅支持受控 Streamable HTTP Tools，cancellation 为 best effort，Durable Task 使用 MySQL 而非分布式 MQ，也没有内置 Grafana/OTel stack 或 multi-agent。
+
+这些限制用于界定项目范围，而不是继续扩展功能的 Roadmap。V1–V4 已冻结。

@@ -194,5 +194,5 @@ No remote MCP URL was supplied or contacted during CP19 implementation. The auto
   - 外部描述和结果仍然不可信。
 - Dynamic per-invocation transport timeout is unavailable through the current callback integration.
   - 通过当前的回调集成无法实现按调用动态设置的传输超时。
-- Observability finalization and package cleanup remain for Checkpoint 20.
-  - 可观测性收尾和包结构清理留待 Checkpoint 20。
+- MCP call metrics and health integration are available through the final V4 observability layer; no external dashboard or tracing backend is bundled.
+  - 最终 V4 可观测性层已提供 MCP 调用指标和健康状态集成；项目不捆绑外部 Dashboard 或 tracing backend。

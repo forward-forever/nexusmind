@@ -180,20 +180,19 @@ nexusmind:
 
 `worker-enabled=false` 用于确定性的集成测试夹具，让它们在没有任何后台消费者的情况下检查队列状态。类生产的本地运行会同时启用任务 API 和 worker。
 
-## Known limitations（已知局限）
+## Checkpoint boundary and final status（Checkpoint 边界与最终状态）
 
-- Provider retry, exponential backoff, circuit breaking, and model fallback are not implemented.
-  - 未实现提供商重试、指数退避、熔断和模型回退。
+- Provider bounded retry and exponential backoff were added later in V4; circuit breaking and model fallback remain out of scope.
+  - V4 后续已增加 Provider 有界重试和指数退避；熔断与模型回退仍不在范围内。
 - Task history is represented by the current logical row and counters, not a full execution audit log.
   - 任务历史由当前的逻辑行和计数器表示，而不是完整的执行审计日志。
 - A run token fences task-row completion but cannot revoke an external side effect already in progress.
   - run token 对任务行的完成做围栏，但无法撤销已经在进行中的外部副作用。
 - Graceful shutdown is bounded; recovery is still required after forced termination.
   - 优雅关闭是有界的；强制终止后仍然需要恢复。
-- Hybrid retrieval routes remain serial.
-  - 混合检索的各路仍是串行的。
-- Agent sessions do not yet have backend concurrency control.
-  - Agent 会话目前还没有后端并发控制。
-- Token budgets, production metrics, distributed tracing, and an operations dashboard are not implemented.
-  - 未实现 token 预算、生产指标、分布式链路追踪和运维看板。
-
+- Hybrid retrieval routes were parallelized later in V4 without changing ranking semantics.
+  - V4 后续已并行化 Hybrid routes，ranking 语义不变。
+- Agent sessions later gained a MySQL lease and fenced memory commit.
+  - Agent Session 后续增加了 MySQL lease 和带 fencing 的 Memory Commit。
+- Token budgets and Micrometer/Prometheus metrics are implemented; distributed tracing and an operations dashboard remain out of scope.
+  - Token Budget 与 Micrometer/Prometheus 指标已经实现；分布式追踪和运维 Dashboard 仍不在范围内。
